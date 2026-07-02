@@ -12,7 +12,7 @@
       قضاوتی ممکن نیست و هیچ‌کس اخطار نمی‌گیره.
 """
 
-import asyncio
+import base64
 import logging
 
 from telegram import Update
@@ -21,8 +21,8 @@ from telegram.ext import ContextTypes
 
 import redis_client as rc
 from db import Report, ReportReason, async_session
-from judge import judge_report
 from keyboards import report_reason_keyboard
+from verdict_notify import notify_chat_verdict, notify_profile_verdict
 
 logger = logging.getLogger(__name__)
 
@@ -94,121 +94,15 @@ async def report_reason_callback(update: Update, context: ContextTypes.DEFAULT_T
         "✅ گزارش شما ثبت شد و در حال بررسی توسطِ سیستمِ قضاوتِ ماست... ⏳"
     )
 
-    asyncio.create_task(_run_judge_bg(context, report_id, session_id, reporter_id, reported_id, reason_code))
-
-
-async def _run_judge_bg(context, report_id, session_id, reporter_id, reported_id, reason_code):
-    try:
-        result = await judge_report(
-            report_id=report_id,
-            session_id=session_id,
-            reporter_id=reporter_id,
-            reported_id=reported_id,
-            reason=reason_code,
-            details=None,
-        )
-    except Exception:
-        logger.exception("خطای غیرمنتظره در judge_report برای report_id=%s", report_id)
-        result = {"verdict": "pending"}
-    await _notify_verdict(context, reporter_id, reported_id, result)
-
-
-async def _notify_verdict(context: ContextTypes.DEFAULT_TYPE, reporter_id: int, reported_id: int, result: dict) -> None:
-    verdict = result.get("verdict")
-
-    if verdict == "no_history":
-        try:
-            await context.bot.send_message(
-                reporter_id,
-                "⚠️ متاسفانه تاریخچه‌ی این گفتگو در دسترس نیست (پاک شده یا پیامی ثبت نشده بود)، "
-                "پس امکانِ بررسیِ این گزارش وجود نداشت.",
-            )
-        except TelegramError:
-            pass
-        return
-
-    if verdict == "pending":
-        try:
-            await context.bot.send_message(
-                reporter_id,
-                "⚠️ بررسیِ خودکارِ این گزارش با خطا مواجه شد. گزارشت ثبت شده و بعداً بررسی می‌شه.",
-            )
-        except TelegramError:
-            pass
-        return
-
-    if verdict == "guilty":
-        warning_number = result["reported_warning_number"]
-        auto_banned = result["reported_auto_banned"]
-        reason_fa = result["reason_fa"]
-        reward_coins = result.get("reward_coins", 0)
-        new_balance = result.get("new_coin_balance")
-
-        guilty_text = (
-            f"⚖️ طبق بررسیِ قاضی، شما اخطار گرفتید ({warning_number} از ۵).\n\n"
-            f"دلیل: {reason_fa}"
-        )
-        if auto_banned:
-            guilty_text += (
-                "\n\n🚫 به دلیل رسیدن به ۵ اخطار، حساب شما به‌صورت خودکار مسدود شد."
-            )
-        try:
-            await context.bot.send_message(reported_id, guilty_text)
-        except TelegramError:
-            logger.warning("امکان اطلاع‌رسانیِ اخطار به reported_id=%s وجود نداشت.", reported_id)
-
-        reporter_text = "✅ گزارش شما بررسی و تاییدِ صحت شد."
-        if reward_coins:
-            reporter_text += f"\n💰 به‌عنوان پاداش، {reward_coins} سکه به حسابت اضافه شد."
-            if new_balance is not None:
-                reporter_text += f" (موجودی فعلی: {new_balance})"
-        reporter_text += "\nاز کمکت به امنیتِ جامعه‌ی ملوگپ ممنونیم 🙏"
-
-        # اگه علاوه بر تاییدِ گزارش، خودِ گزارش‌دهنده هم توی همون گفتگو
-        # رفتارِ نامناسبی داشته (مثلاً هر دو طرف فحش داده‌ن)، این جدا
-        # اطلاع داده می‌شه.
-        if result.get("reporter_also_guilty"):
-            reporter_text += (
-                f"\n\n⚠️ ضمناً طبق بررسی، خودت هم در این گفتگو رفتار نامناسبی داشتی و بابتش "
-                f"اخطار گرفتی ({result['reporter_also_guilty_warning_number']} از ۵).\n"
-                f"دلیل: {result['reporter_also_guilty_reason_fa']}"
-            )
-            if result.get("reporter_also_guilty_auto_banned"):
-                reporter_text += "\n🚫 به دلیل رسیدن به ۵ اخطار، حساب شما به‌صورت خودکار مسدود شد."
-
-        try:
-            await context.bot.send_message(reporter_id, reporter_text)
-        except TelegramError:
-            pass
-        return
-
-    if verdict == "dismissed":
-        warning_number = result["reporter_warning_number"]
-        auto_banned = result["reporter_auto_banned"]
-        reason_fa = result["reason_fa"]
-
-        dismissed_text = (
-            f"⚖️ طبق بررسیِ قاضی، گزارشِ شما نادرست/بی‌اساس تشخیص داده شد و یک اخطار گرفتید "
-            f"({warning_number} از ۵).\n\nدلیل: {reason_fa}"
-        )
-        if auto_banned:
-            dismissed_text += (
-                "\n\n🚫 به دلیل رسیدن به ۵ اخطار، حساب شما به‌صورت خودکار مسدود شد."
-            )
-
-        if result.get("reporter_also_guilty"):
-            dismissed_text += (
-                f"\n\n⚠️ ضمناً طبق بررسی، بابتِ رفتارِ نامناسبِ خودت در همین گفتگو هم یک اخطارِ "
-                f"دیگه گرفتی ({result['reporter_also_guilty_warning_number']} از ۵).\n"
-                f"دلیل: {result['reporter_also_guilty_reason_fa']}"
-            )
-            if result.get("reporter_also_guilty_auto_banned"):
-                dismissed_text += "\n🚫 به دلیل رسیدن به ۵ اخطار، حساب شما به‌صورت خودکار مسدود شد."
-
-        try:
-            await context.bot.send_message(reporter_id, dismissed_text)
-        except TelegramError:
-            logger.warning("امکان اطلاع‌رسانیِ اخطار به reporter_id=%s وجود نداشت.", reporter_id)
+    await rc.push_ai_job({
+        "type": "chat_report",
+        "report_id": report_id,
+        "session_id": session_id,
+        "reporter_id": reporter_id,
+        "reported_id": reported_id,
+        "reason": reason_code,
+        "details": None,
+    })
 
 
 # ---------------------------------------------------------------------------
@@ -247,80 +141,22 @@ async def handle_profile_report(update: Update, context: ContextTypes.DEFAULT_TY
 
     await query.message.reply_text("🚩 گزارشِ پروفایل ثبت شد و در حال بررسی توسطِ سیستمِ قضاوتِ ماست... ⏳")
 
-    image_bytes = None
+    image_b64 = None
     if snapshot.get("photo_file_id"):
         try:
             tg_file = await context.bot.get_file(snapshot["photo_file_id"])
             image_bytes = bytes(await tg_file.download_as_bytearray())
+            image_b64 = base64.b64encode(image_bytes).decode()
         except TelegramError:
             logger.warning("امکانِ دانلودِ عکسِ پروفایل برای بررسیِ AI وجود نداشت.")
 
-    asyncio.create_task(_run_profile_judge_bg(context, profile_report_id, reporter_id, reported_id, snapshot, image_bytes))
+    await rc.push_ai_job({
+        "type": "profile_report",
+        "profile_report_id": profile_report_id,
+        "reporter_id": reporter_id,
+        "reported_id": reported_id,
+        "snapshot": snapshot,
+        "image_b64": image_b64,
+    })
 
 
-async def _run_profile_judge_bg(context, profile_report_id, reporter_id, reported_id, snapshot, image_bytes):
-    try:
-        result = await judge_profile_report(profile_report_id, reporter_id, reported_id, snapshot, image_bytes)
-    except Exception:
-        logger.exception("خطای غیرمنتظره در judge_profile_report برای profile_report_id=%s", profile_report_id)
-        result = {"verdict": "pending"}
-    await _notify_profile_verdict(context, reporter_id, reported_id, result)
-
-
-async def _notify_profile_verdict(
-    context: ContextTypes.DEFAULT_TYPE, reporter_id: int, reported_id: int, result: dict
-) -> None:
-    verdict = result.get("verdict")
-
-    if verdict == "pending":
-        try:
-            await context.bot.send_message(
-                reporter_id,
-                "⚠️ بررسیِ خودکارِ این گزارش با خطا مواجه شد. گزارشت ثبت شده و بعداً بررسی می‌شه.",
-            )
-        except TelegramError:
-            pass
-        return
-
-    if verdict == "guilty":
-        reason_fa = result["reason_fa"]
-        reward_coins = result.get("reward_coins", 0)
-        new_balance = result.get("new_coin_balance")
-
-        try:
-            await context.bot.send_message(
-                reported_id,
-                f"🚫 پروفایلِ شما بر اساسِ بررسیِ قاضی محتوای نامناسب داشت و حسابتون مسدود شد.\n\n"
-                f"دلیل: {reason_fa}",
-            )
-        except TelegramError:
-            logger.warning("امکان اطلاع‌رسانیِ بلاک به reported_id=%s وجود نداشت.", reported_id)
-
-        reporter_text = "✅ گزارشِ پروفایلِ شما بررسی و تاییدِ صحت شد؛ کاربر بلاک شد."
-        if reward_coins:
-            reporter_text += f"\n💰 به‌عنوان پاداش، {reward_coins} سکه به حسابت اضافه شد."
-            if new_balance is not None:
-                reporter_text += f" (موجودی فعلی: {new_balance})"
-
-        try:
-            await context.bot.send_message(reporter_id, reporter_text)
-        except TelegramError:
-            pass
-        return
-
-    if verdict == "dismissed":
-        warning_number = result["warning_number"]
-        auto_banned = result["auto_banned"]
-        reason_fa = result["reason_fa"]
-
-        dismissed_text = (
-            f"⚖️ طبق بررسیِ قاضی، گزارشِ پروفایلِ شما نادرست/بی‌اساس تشخیص داده شد و یک اخطار "
-            f"گرفتید ({warning_number} از ۵).\n\nدلیل: {reason_fa}"
-        )
-        if auto_banned:
-            dismissed_text += "\n\n🚫 به دلیل رسیدن به ۵ اخطار، حساب شما به‌صورت خودکار مسدود شد."
-
-        try:
-            await context.bot.send_message(reporter_id, dismissed_text)
-        except TelegramError:
-            logger.warning("امکان اطلاع‌رسانیِ اخطار به reporter_id=%s وجود نداشت.", reporter_id)

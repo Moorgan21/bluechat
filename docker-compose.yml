@@ -19,8 +19,32 @@ services:
       BOT_TOKEN: ${BOT_TOKEN}
       BOT_USERNAME: ${BOT_USERNAME}
       GEMINI_API_KEY: ${GEMINI_API_KEY}
+      GEMINI_RPM: ${GEMINI_RPM:-100}
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY}
       DATABASE_URL: postgresql+asyncpg://melogap:melogap@postgres:5432/melogap
+      READ_DATABASE_URL: ${READ_DATABASE_URL:-}
+      DB_POOL_SIZE: ${DB_POOL_SIZE:-20}
+      DB_MAX_OVERFLOW: ${DB_MAX_OVERFLOW:-40}
+      REDIS_URL: redis://redis:6379/0
+
+  worker:
+    build: .
+    command: python worker.py
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      BOT_TOKEN: ${BOT_TOKEN}
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      GEMINI_RPM: ${GEMINI_RPM:-100}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY}
+      DATABASE_URL: postgresql+asyncpg://melogap:melogap@postgres:5432/melogap
+      READ_DATABASE_URL: ${READ_DATABASE_URL:-}
+      DB_POOL_SIZE: ${DB_POOL_SIZE:-20}
+      DB_MAX_OVERFLOW: ${DB_MAX_OVERFLOW:-40}
       REDIS_URL: redis://redis:6379/0
 
   postgres:

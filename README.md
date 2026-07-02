@@ -134,12 +134,12 @@ GEMINI_RPM=100      # حداکثر درخواست به Gemini در هر دقیق
 
 ### مسیر رشد
 
-برای مقیاس بزرگ‌تر، مراحل پیشنهادی به ترتیب اولویت:
-
-1. **Webhook به‌جای Polling** — کاهش latency و حذف polling overhead
-2. **Redis Queue برای AI** — انتقال DeepSeek/Gemini به یک worker process جداگانه با صف Redis برای پایداری در ریستارت
-3. **افزایش DB connection pool** — بالا بردن `pool_size` متناسب با بار
-4. **Read replica برای PostgreSQL** — جداسازی query های خواندن از نوشتن
+| مرحله | وضعیت | توضیح |
+|-------|--------|-------|
+| Redis Queue برای AI | ✅ پیاده شده | `worker.py` جداگانه — جاب‌های DeepSeek/Gemini از Redis queue می‌خونه؛ crash-safe |
+| افزایش DB connection pool | ✅ پیاده شده | پیش‌فرض ۲۰+۴۰؛ قابل تنظیم با `DB_POOL_SIZE` و `DB_MAX_OVERFLOW` |
+| Read replica برای PostgreSQL | ✅ زیرساخت آماده | تنظیم `READ_DATABASE_URL` در `.env` کافیه؛ بدون آن روی primary fallback می‌شه |
+| Webhook به‌جای Polling | ⏳ نیاز به دامنه | برای فعال‌سازی، دامنه‌ی HTTPS و nginx reverse proxy لازمه |
 
 ---
 
@@ -193,6 +193,8 @@ bluechat/
 ├── judge.py              # قضاوت گزارش‌ها با DeepSeek
 ├── moderation.py         # بررسی عکس پروفایل با Gemini
 ├── gemini_limiter.py     # rate limiter برای Gemini API (token bucket)
+├── worker.py             # AI worker — پردازش صف قضاوت در پروسه‌ی جداگانه
+├── verdict_notify.py     # اطلاع‌رسانی نتیجه‌ی قضاوت (مشترک بین bot و worker)
 ├── iran_cities.json      # لیست ۳۱ استان و تمام شهرهای ایران
 ├── LICENSE               # All Rights Reserved
 └── requirements.txt      # وابستگی‌های Python

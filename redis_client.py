@@ -478,3 +478,19 @@ async def get_chat_request_requester(request_id: str) -> Optional[int]:
 
 async def clear_chat_request(request_id: str) -> None:
     await r.delete(KEY_CHAT_REQUEST.format(request_id=request_id))
+
+
+# --- صف جاب‌های AI (برای worker.py) ---
+KEY_AI_JOBS = "melogap:ai_jobs"
+
+
+async def push_ai_job(job: dict) -> None:
+    await r.lpush(KEY_AI_JOBS, json.dumps(job, ensure_ascii=False))
+
+
+async def pop_ai_job(timeout: int = 5) -> Optional[dict]:
+    result = await r.brpop(KEY_AI_JOBS, timeout=timeout)
+    if result is None:
+        return None
+    _, data = result
+    return json.loads(data)

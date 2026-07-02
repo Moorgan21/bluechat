@@ -50,9 +50,23 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 DATABASE_URL = os.environ.get(
     "DATABASE_URL", "postgresql+asyncpg://melogap:melogap@localhost:5432/melogap"
 )
+READ_DATABASE_URL = os.environ.get("READ_DATABASE_URL", "").strip() or DATABASE_URL
 
-engine = create_async_engine(DATABASE_URL, echo=False, pool_size=10, max_overflow=20)
+_POOL_SIZE = int(os.environ.get("DB_POOL_SIZE", "20"))
+_MAX_OVERFLOW = int(os.environ.get("DB_MAX_OVERFLOW", "40"))
+
+engine = create_async_engine(DATABASE_URL, echo=False, pool_size=_POOL_SIZE, max_overflow=_MAX_OVERFLOW)
 async_session = async_sessionmaker(engine, expire_on_commit=False)
+
+# اگه READ_DATABASE_URL تنظیم شده باشه (یعنی read replica داریم)، یه engine
+# جداگانه برای query های خواندنی می‌سازیم تا بار روی primary کمتر بشه.
+# اگه تنظیم نشده باشه، همون engine اصلی استفاده می‌شه (بدون تغییر رفتار).
+_read_engine = (
+    create_async_engine(READ_DATABASE_URL, echo=False, pool_size=_POOL_SIZE, max_overflow=_MAX_OVERFLOW)
+    if READ_DATABASE_URL != DATABASE_URL
+    else engine
+)
+read_session = async_sessionmaker(_read_engine, expire_on_commit=False)
 
 
 class Base(DeclarativeBase):
