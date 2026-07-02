@@ -1,0 +1,138 @@
+# Copyright (C) 2026 Dariush Lashani
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+"""
+لایه‌ی دیتابیس — این پکیج قبلاً یه فایلِ تکیِ ۷۵۱ خطی (db.py) بود؛ برای
+خوانایی، به ۳ ماژول بر اساسِ مسئولیت شکسته شده:
+
+    connections.py — engine/session/Base و init_db()
+    models.py       — enumها و کلاس‌های ORM (جدول‌ها)
+    queries.py       — توابعِ async که روی مدل‌ها کار می‌کنن
+
+این فایل همه‌چیزِ لازم رو دوباره export می‌کنه تا کدِ بقیه‌ی پروژه (که
+همه‌جا با `from db import X, Y, Z` یا `db.X` صداش می‌زنه) بدونِ هیچ
+تغییری کار کنه — این یه تقسیمِ داخلی‌ست، نه تغییرِ API.
+"""
+
+from .connections import (
+    Base,
+    DATABASE_URL,
+    READ_DATABASE_URL,
+    async_session,
+    engine,
+    init_db,
+    read_session,
+    _read_engine,
+)
+from .models import (
+    BlockedSender,
+    ChatMessage,
+    ChatSession,
+    CoinTransaction,
+    Gender,
+    ProfileReport,
+    ReactionLog,
+    ReactionTag,
+    Report,
+    ReportReason,
+    ReportVerdict,
+    User,
+    Warning,
+)
+from .queries import (
+    add_reaction_tag,
+    add_warning,
+    ban_user,
+    block_sender,
+    clear_photo_file_id,
+    deduct_coins,
+    delete_reaction_tag,
+    get_or_create_user,
+    get_reaction_counts,
+    get_reaction_tag,
+    get_session_transcript,
+    get_user_by_referral_code,
+    get_user_profile_snapshot,
+    grant_referral_bonus,
+    grant_report_reward,
+    increment_total_chats,
+    is_sender_blocked,
+    list_reaction_tags,
+    log_reaction,
+    make_point,
+    mark_session_history_deleted,
+    purge_old_chat_messages,
+    refund_coins,
+    set_reactions_enabled,
+    set_silent_mode,
+    store_chat_message,
+    unblock_sender,
+    update_next_gender_pref,
+    update_profile_report_verdict,
+    update_report_verdict,
+)
+
+__all__ = [
+    "Base",
+    "DATABASE_URL",
+    "READ_DATABASE_URL",
+    "async_session",
+    "engine",
+    "init_db",
+    "read_session",
+    "BlockedSender",
+    "ChatMessage",
+    "ChatSession",
+    "CoinTransaction",
+    "Gender",
+    "ProfileReport",
+    "ReactionLog",
+    "ReactionTag",
+    "Report",
+    "ReportReason",
+    "ReportVerdict",
+    "User",
+    "Warning",
+    "add_reaction_tag",
+    "add_warning",
+    "ban_user",
+    "block_sender",
+    "clear_photo_file_id",
+    "deduct_coins",
+    "delete_reaction_tag",
+    "get_or_create_user",
+    "get_reaction_counts",
+    "get_reaction_tag",
+    "get_session_transcript",
+    "get_user_by_referral_code",
+    "get_user_profile_snapshot",
+    "grant_referral_bonus",
+    "grant_report_reward",
+    "increment_total_chats",
+    "is_sender_blocked",
+    "list_reaction_tags",
+    "log_reaction",
+    "make_point",
+    "mark_session_history_deleted",
+    "purge_old_chat_messages",
+    "refund_coins",
+    "set_reactions_enabled",
+    "set_silent_mode",
+    "store_chat_message",
+    "unblock_sender",
+    "update_next_gender_pref",
+    "update_profile_report_verdict",
+    "update_report_verdict",
+]

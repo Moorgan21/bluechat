@@ -14,303 +14,32 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 """
-لایه‌ی دیتابیس (PostgreSQL + PostGIS با SQLAlchemy async)
---------------------------------------------------------------
-نیازمندی‌ها:
-    pip install sqlalchemy[asyncio] asyncpg geoalchemy2
-
-⚠️ باید پسوند PostGIS روی دیتابیستون فعال باشه (یک‌بار، دستی):
-    CREATE EXTENSION IF NOT EXISTS postgis;
-این دستور نیاز به دسترسی superuser داره؛ init_db() این extension رو
-خودکار فعال می‌کنه (اگه یوزر دیتابیس دسترسی کافی داشته باشه).
-
-تنظیم اتصال با متغیر محیطی:
-    export DATABASE_URL="postgresql+asyncpg://user:pass@host:5432/bluechat"
-
-اگه از ایمیج رسمی postgres:16 استفاده می‌کنی، برای داشتن PostGIS باید
-ایمیج postgis/postgis رو به‌جاش بگیری:
-    docker run -d --name bluechat-pg -e POSTGRES_USER=bluechat \
-      -e POSTGRES_PASSWORD=bluechat -e POSTGRES_DB=bluechat \
-      -p 5432:5432 postgis/postgis:16-3.4
-
-اگه از یه Postgres مشترک با پروژه‌های دیگه روی همون سرور استفاده می‌کنی،
-فقط یه دیتابیس/اسکیمای جدا (مثلاً `bluechat`) براش بساز که تداخلی با
-جداول پروژه‌های دیگه نداشته باشه.
+کوئری‌ها و توابعِ کمکیِ سطح-بالا که روی مدل‌های ORM کار می‌کنن. هر کدوم
+سشنِ خودشون رو باز/بسته می‌کنن (بدونِ نیاز به session بیرونی)، مگر
+get_or_create_user که برای استفاده‌ی مشترک بینِ چند عملیات در یک
+تراکنش، session رو از بیرون می‌گیره.
 """
 
-import enum
-import os
 from datetime import datetime
 
-from geoalchemy2 import Geography
-from geoalchemy2.functions import ST_DWithin, ST_Distance, ST_MakePoint, ST_SetSRID
-from sqlalchemy import (
-    BigInteger,
-    Boolean,
-    DateTime,
-    Enum,
-    ForeignKey,
-    Integer,
-    String,
-    Text,
-    UniqueConstraint,
-    func,
-    select,
-    text,
+from geoalchemy2.functions import ST_MakePoint, ST_SetSRID
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from .connections import async_session
+from .models import (
+    BlockedSender,
+    ChatMessage,
+    ChatSession,
+    CoinTransaction,
+    ProfileReport,
+    ReactionLog,
+    ReactionTag,
+    Report,
+    ReportVerdict,
+    User,
+    Warning,
 )
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
-
-DATABASE_URL = os.environ.get(
-    "DATABASE_URL", "postgresql+asyncpg://bluechat:bluechat@localhost:5432/bluechat"
-)
-READ_DATABASE_URL = os.environ.get("READ_DATABASE_URL", "").strip() or DATABASE_URL
-
-_POOL_SIZE = int(os.environ.get("DB_POOL_SIZE", "20"))
-_MAX_OVERFLOW = int(os.environ.get("DB_MAX_OVERFLOW", "40"))
-
-engine = create_async_engine(DATABASE_URL, echo=False, pool_size=_POOL_SIZE, max_overflow=_MAX_OVERFLOW)
-async_session = async_sessionmaker(engine, expire_on_commit=False)
-
-# اگه READ_DATABASE_URL تنظیم شده باشه (یعنی read replica داریم)، یه engine
-# جداگانه برای query های خواندنی می‌سازیم تا بار روی primary کمتر بشه.
-# اگه تنظیم نشده باشه، همون engine اصلی استفاده می‌شه (بدون تغییر رفتار).
-_read_engine = (
-    create_async_engine(READ_DATABASE_URL, echo=False, pool_size=_POOL_SIZE, max_overflow=_MAX_OVERFLOW)
-    if READ_DATABASE_URL != DATABASE_URL
-    else engine
-)
-read_session = async_sessionmaker(_read_engine, expire_on_commit=False)
-
-
-class Base(DeclarativeBase):
-    pass
-
-
-class Gender(str, enum.Enum):
-    male = "male"
-    female = "female"
-    unset = "unset"
-
-
-class ReportReason(str, enum.Enum):
-    spam = "spam"
-    scam = "scam"
-    abuse = "abuse"
-    sexual = "sexual"
-    fake_profile = "fake_profile"
-    other = "other"
-
-
-class User(Base):
-    __tablename__ = "users"
-
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)  # telegram user_id
-    username: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    first_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
-
-    # پروفایل عمومی داخل ربات (کاملاً مستقل از هویت واقعی)
-    display_name: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    bio: Mapped[str | None] = mapped_column(String(512), nullable=True)
-    gender: Mapped[Gender] = mapped_column(Enum(Gender), default=Gender.unset)
-    age: Mapped[int | None] = mapped_column(Integer, nullable=True)
-
-    # موقعیت جغرافیایی متنی (انتخاب در onboarding)
-    province: Mapped[str | None] = mapped_column(String(50), nullable=True)
-    city: Mapped[str | None] = mapped_column(String(50), nullable=True)
-
-    # عکس پروفایل (فقط بعد از تایید ماژول moderation ذخیره می‌شه)
-    photo_file_id: Mapped[str | None] = mapped_column(String(256), nullable=True)
-    photo_approved_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-
-    # اقتصاد سکه
-    coins: Mapped[int] = mapped_column(Integer, default=10)  # سکه‌ی هدیه‌ی اولیه
-
-    # موقعیت مکانی برای «افراد نزدیک» (اختیاری، با رضایت کاربر)
-    # با PostGIS به‌صورت geography(Point, 4326) ذخیره می‌شه تا کوئری‌های
-    # مکانی (ST_DWithin, ST_Distance) مستقیم توسط دیتابیس و با ایندکس
-    # GiST بهینه انجام بشن، نه با محاسبه‌ی دستی در پایتون.
-    location: Mapped[object | None] = mapped_column(
-        Geography(geometry_type="POINT", srid=4326), nullable=True
-    )
-    location_updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-
-    # لینک ناشناس اختصاصی (deep-link): t.me/BotName?start=u_<referral_code>
-    referral_code: Mapped[str] = mapped_column(String(16), unique=True)
-    invited_by: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
-
-    is_banned: Mapped[bool] = mapped_column(Boolean, default=False)
-    warning_count: Mapped[int] = mapped_column(Integer, default=0)  # اخطارهای فعال (۵ = بن خودکار)
-    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
-
-    # تنظیماتِ دریافتِ واکنش روی پروفایلِ عمومی (/user_<code>)
-    reactions_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
-
-    # تنظیم جنسیت مورد نظر برای matching: "male"/"female"/"any" یا None (هنوز تنظیم نشده)
-    next_gender_pref: Mapped[str | None] = mapped_column(String(8), nullable=True)
-
-    # حالت سایلنت: وقتی فعاله، کسی نمی‌تونه از طریق /user_<code> درخواستِ
-    # چت بفرسته (پروفایل و بقیه‌ی دکمه‌ها همچنان در دسترسن).
-    is_silent: Mapped[bool] = mapped_column(Boolean, default=False)
-
-    # آمار
-    total_chats: Mapped[int] = mapped_column(Integer, default=0)
-    total_reports_received: Mapped[int] = mapped_column(Integer, default=0)
-
-
-class ChatSession(Base):
-    """رکورد هر گفتگوی ناشناس، برای گزارش‌گیری/آمار و سیستم گزارش کاربر."""
-
-    __tablename__ = "chat_sessions"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    user_a_id: Mapped[int] = mapped_column(BigInteger)
-    user_b_id: Mapped[int] = mapped_column(BigInteger)
-    started_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
-    ended_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    ended_by: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
-    was_successful: Mapped[bool] = mapped_column(Boolean, default=False)  # حداقل چند پیام رد و بدل شده
-    # اگه تاریخچه با تایید دوطرفه پاک شده باشه، دیگه پیام‌های این سشن
-    # برای قضاوت AI در دسترس نیستن (متنشون واقعاً از Postgres حذف شده).
-    history_deleted: Mapped[bool] = mapped_column(Boolean, default=False)
-
-
-class ChatMessage(Base):
-    """متن پیام‌های هر گفتگو — برای قضاوتِ AI هنگام گزارش، و برای پاک‌سازی
-    خودکارِ دوره‌ای (هر ۲۴ ساعت) یا پاک‌سازیِ دستی با تایید دوطرفه.
-    فقط پیام‌های متنی ذخیره می‌شن (مدیا صرفاً با یک برچسب نوع، بدون
-    محتوای واقعی، تا هم داده کم بمونه هم حریم خصوصی رعایت بشه)."""
-
-    __tablename__ = "chat_messages"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    session_id: Mapped[int] = mapped_column(ForeignKey("chat_sessions.id"))
-    sender_id: Mapped[int] = mapped_column(BigInteger)
-    content: Mapped[str | None] = mapped_column(Text, nullable=True)  # متن پیام (اگه متنی بود)
-    content_type: Mapped[str] = mapped_column(String(32), default="text")  # text/photo/voice/...
-    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
-
-
-class Warning(Base):
-    """اخطارِ ثبت‌شده برای یک کاربر توسط سیستم قضاوتِ AI (بعد از بررسیِ
-    یک گزارش). warning_number شماره‌ی ترتیبیِ این اخطار برای اون کاربره
-    (۱ تا ۵)."""
-
-    __tablename__ = "warnings"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    user_id: Mapped[int] = mapped_column(BigInteger)
-    report_id: Mapped[int | None] = mapped_column(ForeignKey("reports.id"), nullable=True)
-    warning_number: Mapped[int] = mapped_column(Integer)
-    reason: Mapped[str] = mapped_column(Text)
-    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
-
-
-class ReportVerdict(str, enum.Enum):
-    pending = "pending"        # هنوز قضاوت نشده
-    guilty = "guilty"          # AI تشخیص داده گزارش‌شونده مقصره
-    dismissed = "dismissed"    # AI تشخیص داده گزارش نادرست/بی‌اساس بوده
-    no_history = "no_history"  # تاریخچه پاک شده بود یا پیامی برای بررسی نبود
-
-
-class Report(Base):
-    __tablename__ = "reports"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    session_id: Mapped[int | None] = mapped_column(ForeignKey("chat_sessions.id"), nullable=True)
-    reporter_id: Mapped[int] = mapped_column(BigInteger)
-    reported_id: Mapped[int] = mapped_column(BigInteger)
-    reason: Mapped[ReportReason] = mapped_column(Enum(ReportReason))
-    details: Mapped[str | None] = mapped_column(Text, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
-
-    # نتیجه‌ی قضاوتِ AI
-    verdict: Mapped[ReportVerdict] = mapped_column(Enum(ReportVerdict), default=ReportVerdict.pending)
-    verdict_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
-    verdict_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-
-
-class ProfileReport(Base):
-    """گزارشِ محتوای پروفایل (عکس/نام/بیو) یک کاربر — جدا از گزارشِ
-    رفتار در گفتگو. قضاوتش با Gemini Vision انجام می‌شه چون نیاز به
-    تحلیل تصویر داره."""
-
-    __tablename__ = "profile_reports"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    reporter_id: Mapped[int] = mapped_column(BigInteger)
-    reported_id: Mapped[int] = mapped_column(BigInteger)
-    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
-
-    verdict: Mapped[ReportVerdict] = mapped_column(Enum(ReportVerdict), default=ReportVerdict.pending)
-    verdict_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
-    verdict_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-
-
-class CoinTransaction(Base):
-    """تاریخچه‌ی تراکنش‌های سکه (برای شفافیت و جلوگیری از سوءاستفاده)."""
-
-    __tablename__ = "coin_transactions"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    user_id: Mapped[int] = mapped_column(BigInteger)
-    amount: Mapped[int] = mapped_column(Integer)  # مثبت = واریز، منفی = برداشت
-    reason: Mapped[str] = mapped_column(String(64))  # e.g. "referral_bonus", "failed_chat_refund"
-    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
-
-
-class BlockedSender(Base):
-    """بلاکِ دائمی: owner_id فرستنده‌ی sender_id رو برای لینک ناشناسِ
-    خودش بلاک کرده. بعد از این، هر پیامی که sender_id از طریق لینکِ
-    owner_id بفرسته، بدون تحویل رد می‌شه. این توی Postgres نگه داشته
-    می‌شه (نه Redis) چون باید دائمی باشه، نه TTL-دار."""
-
-    __tablename__ = "blocked_senders"
-    __table_args__ = (UniqueConstraint("owner_id", "sender_id", name="uq_owner_sender_block"),)
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    owner_id: Mapped[int] = mapped_column(BigInteger)
-    sender_id: Mapped[int] = mapped_column(BigInteger)
-    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
-
-
-class ReactionTag(Base):
-    """تگ‌های سفارشیِ واکنش که هر کاربر برای پروفایلِ خودش تعریف کرده
-    (مثلاً «#عصبانی»، «#دختر_بد»). این تگ‌ها موقعی که یکی روی «ارسال
-    واکنش» می‌زنه، به‌عنوانِ گزینه نشونش داده می‌شن."""
-
-    __tablename__ = "reaction_tags"
-    __table_args__ = (UniqueConstraint("owner_id", "label", name="uq_owner_tag_label"),)
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    owner_id: Mapped[int] = mapped_column(BigInteger)
-    label: Mapped[str] = mapped_column(String(32))  # بدون # ذخیره می‌شه، موقعِ نمایش # اضافه می‌شه
-    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
-
-
-class ReactionLog(Base):
-    """هر بار که کسی به یه کاربر واکنش (با یکی از تگ‌های خودش) می‌فرسته،
-    یه رکورد اینجا ثبت می‌شه — هم برای شمارشِ هر تگ، هم برای جلوگیری از
-    اسپم/محدودیتِ نرخ در آینده."""
-
-    __tablename__ = "reaction_logs"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    owner_id: Mapped[int] = mapped_column(BigInteger)  # صاحبِ پروفایل (گیرنده‌ی واکنش)
-    sender_id: Mapped[int] = mapped_column(BigInteger)  # کسی که واکنش رو فرستاده (ناشناس برای owner)
-    tag_id: Mapped[int] = mapped_column(ForeignKey("reaction_tags.id"))
-    tag_label: Mapped[str] = mapped_column(String(32))  # کپیِ برچسب، برای اینکه اگه تگ بعداً حذف شد، تاریخچه بمونه
-    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
-
-
-async def init_db() -> None:
-    async with engine.begin() as conn:
-        await conn.execute(text("CREATE EXTENSION IF NOT EXISTS postgis"))
-        await conn.run_sync(Base.metadata.create_all)
-        # ایندکس مکانی GiST برای جستجوی سریع «نزدیک‌ترین‌ها»
-        await conn.execute(
-            text("CREATE INDEX IF NOT EXISTS idx_users_location ON users USING GIST (location)")
-        )
 
 
 def make_point(latitude: float, longitude: float):
