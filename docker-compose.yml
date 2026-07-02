@@ -1,0 +1,54 @@
+# اجرای کامل پروژه با یک دستور:
+#   docker compose up -d --build
+#
+# قبلش فقط کافیه فایل .env رو از .env.example بسازی و مقادیر واقعی
+# (BOT_TOKEN, BOT_USERNAME, GEMINI_API_KEY, DEEPSEEK_API_KEY) رو داخلش پر کنی.
+# DATABASE_URL و REDIS_URL نیازی به تغییر ندارن چون به سرویس‌های همین
+# فایل اشاره می‌کنن (postgres، redis به‌عنوان hostname داخل شبکه‌ی داکر).
+
+services:
+  bot:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      BOT_TOKEN: ${BOT_TOKEN}
+      BOT_USERNAME: ${BOT_USERNAME}
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY}
+      DATABASE_URL: postgresql+asyncpg://melogap:melogap@postgres:5432/melogap
+      REDIS_URL: redis://redis:6379/0
+
+  postgres:
+    image: postgis/postgis:16-3.4
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: melogap
+      POSTGRES_PASSWORD: melogap
+      POSTGRES_DB: melogap
+    volumes:
+      - melogap_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U melogap -d melogap"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7
+    restart: unless-stopped
+    volumes:
+      - melogap_redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  melogap_pgdata:
+  melogap_redisdata:
