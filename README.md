@@ -100,7 +100,46 @@ DATABASE_URL=       # آدرس PostgreSQL
 REDIS_URL=          # آدرس Redis
 GEMINI_API_KEY=     # کلید Google Gemini (مدیریت محتوا و تصویر)
 DEEPSEEK_API_KEY=   # کلید DeepSeek (قضاوت گزارش‌ها)
+GEMINI_RPM=100      # حداکثر درخواست به Gemini در هر دقیقه (پیش‌فرض: ۱۰۰)
 ```
+
+---
+
+## ⚡ مقیاس‌پذیری
+
+### ظرفیت فعلی
+
+ربات روی یک پردازش asyncio اجرا می‌شه و برای بار متوسط بهینه‌شده:
+
+| معیار | ظرفیت تخمینی |
+|-------|-------------|
+| چت همزمان فعال | ~۱۰۰–۲۰۰ جفت |
+| پیام در ثانیه | ~۵۰–۸۰ |
+| کاربر همزمان آنلاین | ~۴۰۰–۶۰۰ نفر |
+| اتصال همزمان به DB | حداکثر ۳۰ (`pool_size=10, max_overflow=20`) |
+
+### تصمیم‌های طراحی
+
+- **asyncio single-process** — تمام I/O غیرمسدودکننده‌ست؛ هیچ عملیاتی event loop رو بلاک نمی‌کنه
+- **قضاوت AI در background** — `asyncio.create_task` باعث می‌شه هندلر گزارش بلافاصله برگرده و DeepSeek/Gemini در پس‌زمینه اجرا بشن
+- **Rate limiter برای Gemini** — Token bucket با ظرفیت قابل تنظیم (`GEMINI_RPM`) از خطای ۴۲۹ جلوگیری می‌کنه
+- **Redis برای state لحظه‌ای** — جفت‌شدن، صف انتظار، پیام‌های پین و وضعیت چت همه توی Redis نگه داشته می‌شن تا latency پایین بمونه
+- **PostgreSQL connection pool** — SQLAlchemy async با pool داخلی، از ایجاد اتصال جدید برای هر درخواست جلوگیری می‌کنه
+
+### گلوگاه‌های شناخته‌شده
+
+- **یک پردازش Python** — در بار خیلی سنگین (۱۰۰۰+ کاربر همزمان) باید به چند worker یا webhook با load balancer مهاجرت کرد
+- **Telegram rate limit** — حداکثر ۳۰ پیام در ثانیه به یک چت؛ در چت‌های خیلی پرمسیج ممکنه throttle بشه
+- **دیسک سرور** — لاگ‌های Docker و journald با logrotate محدود شدن؛ مانیتورینگ دوره‌ای توصیه می‌شه
+
+### مسیر رشد
+
+برای مقیاس بزرگ‌تر، مراحل پیشنهادی به ترتیب اولویت:
+
+1. **Webhook به‌جای Polling** — کاهش latency و حذف polling overhead
+2. **Redis Queue برای AI** — انتقال DeepSeek/Gemini به یک worker process جداگانه با صف Redis برای پایداری در ریستارت
+3. **افزایش DB connection pool** — بالا بردن `pool_size` متناسب با بار
+4. **Read replica برای PostgreSQL** — جداسازی query های خواندن از نوشتن
 
 ---
 
@@ -153,6 +192,7 @@ bluechat/
 │   └── menu.py           # منوی اصلی
 ├── judge.py              # قضاوت گزارش‌ها با DeepSeek
 ├── moderation.py         # بررسی عکس پروفایل با Gemini
+├── gemini_limiter.py     # rate limiter برای Gemini API (token bucket)
 ├── iran_cities.json      # لیست ۳۱ استان و تمام شهرهای ایران
 ├── LICENSE               # All Rights Reserved
 └── requirements.txt      # وابستگی‌های Python
