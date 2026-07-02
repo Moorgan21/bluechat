@@ -1,5 +1,4 @@
 
-```markdown
 # 💬 Blue Chat
 
 ![GitHub License](https://img.shields.io/github/license/Moorgan21/bluechat?color=007bff)
@@ -95,7 +94,7 @@
 
 ```bash
 # ۱. کلون کن
-git clone [https://github.com/Moorgan21/bluechat.git](https://github.com/Moorgan21/bluechat.git)
+git clone https://github.com/Moorgan21/bluechat.git
 cd bluechat
 
 # ۲. فایل env بساز
@@ -107,9 +106,10 @@ psql $DATABASE_URL -f schema.sql
 
 # ۴. اجرا کن
 docker compose up -d --build
-
 ```
+
 ### متغیرهای محیطی (.env)
+
 ```env
 BOT_TOKEN=          # توکن ربات از BotFather
 BOT_USERNAME=       # یوزرنیم ربات (بدون @)
@@ -125,6 +125,7 @@ WEBHOOK_URL=        # آدرس کامل webhook — اگه خالی باشه pol
 WEBHOOK_SECRET=     # توکن امنیتی webhook (یه رشته تصادفی)
 WEBHOOK_PORT=8080   # پورت داخلی bot برای دریافت webhook (پیش‌فرض: ۸۰۸۰)
 GRAFANA_PASSWORD=   # رمز ورود Grafana (پیش‌فرض: admin)
+
 # آنتی‌اسپم (اختیاری — مقادیر پیش‌فرض برای اکثر حالت‌ها کافیه)
 SPAM_MSG_LIMIT=12         # حداکثر پیام در پنجره‌ی کوتاه
 SPAM_MSG_WINDOW=5         # پنجره‌ی کوتاه (ثانیه)
@@ -133,53 +134,66 @@ SPAM_FLOOD_WINDOW=30      # پنجره‌ی flood (ثانیه)
 SPAM_CMD_LIMIT=8          # حداکثر callback/دستور
 SPAM_CMD_WINDOW=10        # پنجره‌ی callback (ثانیه)
 SPAM_BLOCK_DURATION=60    # مدت بلاک موقت (ثانیه)
-
 ```
+
+---
+
 ## 📊 مانیتورینگ
+
 ### معماری
+
 ```
 bot / worker  ──► prometheus_client (port 8081)  ─┐
 node-exporter ──► سیستم (CPU، RAM، دیسک)          ├──► Prometheus ──► Grafana
 postgres-exporter ──► دیتابیس                     │
 redis-exporter ──► Redis                          ─┘
-
 ```
+
 ### دسترسی به Grafana
+
 پنل مانیتورینگ از طریق nginx روی آدرس زیر در دسترسه:
-```
-[https://your-domain.com/grafana/](https://your-domain.com/grafana/)
 
 ```
- * **user:** admin
- * **pass:** مقدار GRAFANA_PASSWORD در .env (پیش‌فرض: admin)
+https://your-domain.com/grafana/
+```
+
+- **user:** admin
+- **pass:** مقدار `GRAFANA_PASSWORD` در `.env` (پیش‌فرض: admin)
+
 ### متریک‌های ربات
+
 | متریک | نوع | توضیح |
 |---|---|---|
-| bot_active_chats | Gauge | تعداد چت‌های در حال اجرا |
-| bot_waiting_users | Gauge | کاربران در صف انتظار |
-| bot_ai_queue_size | Gauge | جاب‌های AI در انتظار پردازش |
-| bot_messages_relayed_total | Counter | کل پیام‌های relay شده |
-| bot_chats_started_total | Counter | کل چت‌های شروع‌شده |
-| bot_chats_ended_total | Counter | کل چت‌های پایان‌یافته |
-| bot_ai_jobs_processed_total | Counter | کل جاب‌های AI پردازش‌شده |
-| bot_spam_blocks_total | Counter | درخواست‌های مسدودشده توسط spam guard (label: kind) |
+| `bot_active_chats` | Gauge | تعداد چت‌های در حال اجرا |
+| `bot_waiting_users` | Gauge | کاربران در صف انتظار |
+| `bot_ai_queue_size` | Gauge | جاب‌های AI در انتظار پردازش |
+| `bot_messages_relayed_total` | Counter | کل پیام‌های relay شده |
+| `bot_chats_started_total` | Counter | کل چت‌های شروع‌شده |
+| `bot_chats_ended_total` | Counter | کل چت‌های پایان‌یافته |
+| `bot_ai_jobs_processed_total` | Counter | کل جاب‌های AI پردازش‌شده |
+| `bot_spam_blocks_total` | Counter | درخواست‌های مسدودشده توسط spam guard (label: kind) |
+
 ### متریک‌های دیتابیس (custom queries)
+
 | متریک | توضیح |
 |---|---|
-| pg_users_total_count | کل کاربران ثبت‌شده |
-| pg_users_total_new_today | کاربران جدید ۲۴ ساعت اخیر |
-| pg_users_total_new_week | کاربران جدید هفته اخیر |
-| pg_users_by_gender_count | تعداد کاربر به تفکیک جنسیت |
-| pg_users_by_province_count | تعداد کاربر به تفکیک استان |
-| pg_users_by_city_count | تعداد کاربر به تفکیک شهر |
-| pg_total_coins_total | مجموع سکه‌های همه کاربران |
-| pg_warnings_total | کل اخطارهای صادرشده توسط DeepSeek |
-| pg_banned_users_total | کل کاربران بن‌شده |
-| pg_banned_users_by_deepseek | بن‌شده‌های خودکار توسط DeepSeek (۵+ اخطار) |
-| pg_gemini_bans_unique_users_banned | کاربران یونیک بن‌شده توسط Gemini |
-| pg_gemini_bans_profile_report_guilty | کل احکام guilty توسط Gemini |
+| `pg_users_total_count` | کل کاربران ثبت‌شده |
+| `pg_users_total_new_today` | کاربران جدید ۲۴ ساعت اخیر |
+| `pg_users_total_new_week` | کاربران جدید هفته اخیر |
+| `pg_users_by_gender_count` | تعداد کاربر به تفکیک جنسیت |
+| `pg_users_by_province_count` | تعداد کاربر به تفکیک استان |
+| `pg_users_by_city_count` | تعداد کاربر به تفکیک شهر |
+| `pg_total_coins_total` | مجموع سکه‌های همه کاربران |
+| `pg_warnings_total` | کل اخطارهای صادرشده توسط DeepSeek |
+| `pg_banned_users_total` | کل کاربران بن‌شده |
+| `pg_banned_users_by_deepseek` | بن‌شده‌های خودکار توسط DeepSeek (۵+ اخطار) |
+| `pg_gemini_bans_unique_users_banned` | کاربران یونیک بن‌شده توسط Gemini |
+| `pg_gemini_bans_profile_report_guilty` | کل احکام guilty توسط Gemini |
+
 ### داشبورد پیش‌فرض
+
 داشبورد **Blue Chat Bot** به‌صورت خودکار هنگام راه‌اندازی بارگذاری می‌شه و در ۶ بخش سازمان‌یافته:
+
 | بخش | محتوا |
 |---|---|
 | ⚡ وضعیت لحظه‌ای | چت فعال، صف انتظار، صف AI، CPU/RAM/دیسک (Gauge) |
@@ -188,8 +202,13 @@ redis-exporter ──► Redis                          ─┘
 | 📈 ترافیک | نرخ پیام relay، چت شروع/پایان |
 | 🛡 آنتی اسپم | بلاک‌های ۲۴ ساعت، نرخ لحظه‌ای، timeseries موج حملات |
 | 🖥️ زیرساخت | CPU، RAM، Redis، اتصالات PostgreSQL |
+
+---
+
 ## ⚡ مقیاس‌پذیری
+
 ### ظرفیت فعلی
+
 | معیار | ظرفیت | محدودکننده |
 |---|---|---|
 | کاربر ثبت‌شده (کل) | نامحدود | PostgreSQL |
@@ -197,28 +216,37 @@ redis-exporter ──► Redis                          ─┘
 | کاربر همزمان آنلاین | ~۱,۸۰۰ | Telegram API (30 msg/s رایگان) |
 | چت همزمان فعال | ~۱۰۰–۲۰۰ جفت | Telegram API (30 msg/s رایگان) |
 | اتصال همزمان به DB | حداکثر ۶۰ | pool_size=20, max_overflow=40 |
+
 > **سقف اصلی:** محدودیت ۳۰ پیام در ثانیه Telegram برای همه ربات‌ها صدق می‌کنه. با فعال‌سازی **Paid Broadcast** در BotFather این سقف به ۱,۰۰۰ msg/s می‌رسد.
-> 
+
 ### ظرفیت با Paid Broadcast (1,000 msg/s)
+
 | سرعت چت | چت همزمان | کاربر همزمان |
 |---|---|---|
-| ۱ پیام/ثانیه (خیلی سریع) | ۱,۰۰0 جفت | ~۲,۰۰۰ نفر |
+| ۱ پیام/ثانیه (خیلی سریع) | ۱,۰۰۰ جفت | ~۲,۰۰۰ نفر |
 | ۱ پیام/۵ ثانیه (نرمال) | ۵,۰۰۰ جفت | ~۱۰,۰۰۰ نفر |
 | ۱ پیام/۳۰ ثانیه (کند) | ۳۰,۰۰۰ جفت | ~۶۰,۰۰۰ نفر |
+
 هزینه: هر پیام بیشتر از سقف رایگان ۳۰/s برابر **۰.۱ Star** از موجودی ربات کسر می‌شه. نیازی به تغییر کد نیست — فقط از BotFather فعال میشه.
+
 > **نتیجه:** با ترکیب افزایش زیرساخت سرور (CPU، RAM، DB replica، Redis Cluster) و فعال‌سازی Telegram Paid Broadcast، مقیاس‌پذیری ربات عملاً **نامحدود** میشه و هیچ سقف ثابتی وجود نداره.
-> 
+
 ### ویژگی‌های مقیاس‌پذیری
+
 | ویژگی | جزئیات |
 |---|---|
 | **Webhook** | تلگرام آپدیت‌ها رو push می‌کنه؛ latency کمتر و overhead polling حذف شده |
 | **asyncio غیرمسدودکننده** | تمام I/O async هستن؛ هیچ عملیاتی event loop رو بلاک نمی‌کنه |
-| **AI worker جداگانه** | worker.py در پروسه‌ی مستقل؛ جاب‌ها روی Redis queue ماندگارن و با restart از دست نمیرن |
-| **Rate limiter Gemini** | Token bucket با نرخ قابل تنظیم (GEMINI_RPM) از خطای ۴۲۹ جلوگیری می‌کنه |
+| **AI worker جداگانه** | `worker.py` در پروسه‌ی مستقل؛ جاب‌ها روی Redis queue ماندگارن و با restart از دست نمیرن |
+| **Rate limiter Gemini** | Token bucket با نرخ قابل تنظیم (`GEMINI_RPM`) از خطای ۴۲۹ جلوگیری می‌کنه |
 | **Redis برای state** | جفت‌شدن، صف انتظار و وضعیت چت in-memory نگه داشته می‌شن؛ latency زیر ۱ms |
-| **DB connection pool** | پیش‌فرض ۲۰+۴۰ اتصال همزمان؛ قابل تنظیم با DB_POOL_SIZE و DB_MAX_OVERFLOW |
-| **Read replica** | با تنظیم READ_DATABASE_URL query های خواندنی به replica هدایت می‌شن |
+| **DB connection pool** | پیش‌فرض ۲۰+۴۰ اتصال همزمان؛ قابل تنظیم با `DB_POOL_SIZE` و `DB_MAX_OVERFLOW` |
+| **Read replica** | با تنظیم `READ_DATABASE_URL` query های خواندنی به replica هدایت می‌شن |
+
+---
+
 ## 🏗 معماری
+
 ```
 ┌─────────────────────────────────────────┐
 │              Telegram API               │
@@ -240,9 +268,12 @@ redis-exporter ──► Redis                          ─┘
 │         Gemini API + DeepSeek API       │
 │    (مدیریت محتوا + قضاوت گزارش‌ها)     │
 └─────────────────────────────────────────┘
-
 ```
+
+---
+
 ## 📁 ساختار پروژه
+
 ```
 bluechat/
 ├── main.py               # نقطه‌ی ورود و routing اصلی
@@ -280,16 +311,14 @@ bluechat/
 ├── iran_cities.json      # لیست ۳۱ استان و تمام شهرهای ایران
 ├── LICENSE               # GNU Affero General Public License v3 (AGPL-3.0)
 └── requirements.txt      # وابستگی‌های Python
-
-```
-## 📜 لایسنس
-Copyright (C) 2026 Dariush Lashani
-این پروژه تحت مجوز **GNU Affero General Public License v3.0** منتشر شده.
-برای جزئیات کامل فایل LICENSE را ببینید یا به gnu.org/licenses/agpl-3.0 مراجعه کنید.
 ```
 
 ---
 
-حالا که ویترین ریپازیتوری کاملاً آماده و حرفه‌ای شد، می‌خواهی سراغ کدام بخش برویم؟ پیاده‌سازی جاب‌کیو (Job Queue) روی ردیس برای هندل کردن پردازش‌های سنگین هوش مصنوعی در `worker.py` یا نهایی کردن اسکریپت‌های استقرار داکر؟
+## 📜 لایسنس
 
-```
+Copyright (C) 2026 Dariush Lashani
+
+این پروژه تحت مجوز **GNU Affero General Public License v3.0** منتشر شده.
+
+برای جزئیات کامل فایل LICENSE را ببینید یا به [gnu.org/licenses/agpl-3.0](https://www.gnu.org/licenses/agpl-3.0) مراجعه کنید.
