@@ -405,7 +405,6 @@ async def post_init(application: Application) -> None:
         BotCommand("settings", "تنظیمات شخصی"),
         BotCommand("help",     "راهنما"),
         BotCommand("report",   "گزارش تخلف"),
-        BotCommand("newmsg",   "دریافت پیام‌های ناشناس جدید"),
         BotCommand("silent",   "حالت سکوت پروفایل عمومی"),
     ])
 
