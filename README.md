@@ -37,7 +37,8 @@
 ### پیش‌نیازها
 - Docker و Docker Compose
 - توکن ربات تلگرام از [@BotFather](https://t.me/BotFather)
-- API key برای Gemini (اختیاری — برای مدیریت محتوا)
+- API key برای Gemini (برای مدیریت و مدیریت محتوا)
+- API key برای DeepSeek (برای قضاوت گزارش‌ها)
 
 ### مراحل
 
@@ -64,8 +65,8 @@ BOT_TOKEN=          # توکن ربات از BotFather
 BOT_USERNAME=       # یوزرنیم ربات (بدون @)
 DATABASE_URL=       # آدرس PostgreSQL
 REDIS_URL=          # آدرس Redis
-GEMINI_API_KEY=     # کلید Gemini (اختیاری)
-DEEPSEEK_API_KEY=   # کلید DeepSeek (اختیاری)
+GEMINI_API_KEY=     # کلید Gemini (مدیریت محتوا و تصویر)
+DEEPSEEK_API_KEY=   # کلید DeepSeek (قضاوت گزارش‌ها)
 ```
 
 ---
