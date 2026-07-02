@@ -223,11 +223,15 @@ async def handle_profile_text_input(update: Update, context: ContextTypes.DEFAUL
         user = await get_or_create_user(session, telegram_user.id)
 
         if awaiting == "name":
+            from security import sanitize_name
+            text = sanitize_name(text)
             if not text or len(text) > 24:
                 await update.message.reply_text("نام نمایشی باید بین ۱ تا ۲۴ کاراکتر باشه. دوباره بفرست:")
                 return True
             user.display_name = text
         elif awaiting == "bio":
+            from security import sanitize_bio
+            text = sanitize_bio(text)
             if len(text) > 150:
                 await update.message.reply_text("بیوگرافی نباید بیشتر از ۱۵۰ کاراکتر باشه. دوباره بفرست:")
                 return True
@@ -348,6 +352,8 @@ async def handle_onboarding_text_input(update: Update, context: ContextTypes.DEF
     telegram_user = update.effective_user
 
     if step == "name":
+        from security import sanitize_name
+        text = sanitize_name(text)
         if not text or len(text) > 24:
             await update.message.reply_text("نام باید بین ۱ تا ۲۴ کاراکتر باشه. دوباره بفرست:")
             return True

@@ -46,6 +46,12 @@
 - **قضاوت گزارش** — تحلیل تاریخچه‌ی چت و قضاوت گزارش‌های کاربران با DeepSeek
 - **اخطار و بن خودکار** — ۵ اخطار = بن خودکار توسط سیستم AI
 
+### 🛡 امنیت
+- **آنتی‌اسپم** — نرخ‌سنج لغزنده (sliding window) با Redis؛ محدودیت ۱۲ پیام در ۵ ثانیه، ۳۰ پیام در ۳۰ ثانیه (flood)، ۸ callback در ۱۰ ثانیه — تخطی = بلاک موقت ۶۰ ثانیه‌ای
+- **پاک‌سازی ورودی** — حذف null byte، کنترل‌کاراکترها و normalize یونیکد (NFC) روی تمام فیلدهای متنی کاربر
+- **جلوگیری از HTML injection** — تمام داده‌های کاربر قبل از درج در پیام‌های HTML-mode با `html.escape` escape می‌شن
+- **محدودیت طول فیلد** — نام نمایشی ۲۴ کاراکتر، بیو ۱۵۰ کاراکتر، تگ واکنش ۲۰ کاراکتر (server-side)
+
 ### 📍 افراد نزدیک
 - یافتن کاربران در محدوده‌ی جغرافیایی با PostGIS
 - ذخیره‌ی موقعیت مکانی با رضایت کاربر
@@ -63,6 +69,8 @@
 | کش / real-time | Redis |
 | هوش مصنوعی — تصویر | Google Gemini |
 | هوش مصنوعی — گزارش | DeepSeek |
+| مانیتورینگ | Prometheus + Grafana |
+| آنتی‌اسپم | Redis sliding window |
 | استقرار | Docker Compose |
 
 ---
@@ -110,6 +118,14 @@ WEBHOOK_URL=        # آدرس کامل webhook — اگه خالی باشه pol
 WEBHOOK_SECRET=     # توکن امنیتی webhook (یه رشته تصادفی)
 WEBHOOK_PORT=8080   # پورت داخلی bot برای دریافت webhook (پیش‌فرض: ۸۰۸۰)
 GRAFANA_PASSWORD=   # رمز ورود Grafana (پیش‌فرض: admin)
+# آنتی‌اسپم (اختیاری — مقادیر پیش‌فرض برای اکثر حالت‌ها کافیه)
+SPAM_MSG_LIMIT=12         # حداکثر پیام در پنجره‌ی کوتاه
+SPAM_MSG_WINDOW=5         # پنجره‌ی کوتاه (ثانیه)
+SPAM_FLOOD_LIMIT=30       # حداکثر پیام در پنجره‌ی flood
+SPAM_FLOOD_WINDOW=30      # پنجره‌ی flood (ثانیه)
+SPAM_CMD_LIMIT=8          # حداکثر callback/دستور
+SPAM_CMD_WINDOW=10        # پنجره‌ی callback (ثانیه)
+SPAM_BLOCK_DURATION=60    # مدت بلاک موقت (ثانیه)
 ```
 
 ---
@@ -256,6 +272,8 @@ bluechat/
 ├── redis_client.py       # تمام عملیات Redis
 ├── keyboards.py          # کیبوردهای inline و reply
 ├── metrics.py            # متریک‌های Prometheus (counters و gauges)
+├── security.py           # پاک‌سازی ورودی، escape HTML، جلوگیری از injection
+├── spam_guard.py         # آنتی‌اسپم — sliding window rate limiter با Redis
 ├── schema.sql            # ساختار کامل دیتابیس (از صفر)
 ├── handlers/
 │   ├── chat.py           # منطق چت ناشناس و matching
@@ -274,6 +292,7 @@ bluechat/
 ├── worker.py             # AI worker — پردازش صف قضاوت در پروسه‌ی جداگانه
 ├── verdict_notify.py     # اطلاع‌رسانی نتیجه‌ی قضاوت (مشترک بین bot و worker)
 ├── prometheus.yml        # تنظیمات scrape برای Prometheus
+├── pg_custom_queries.yml # کوئری‌های سفارشی postgres-exporter
 ├── grafana/
 │   ├── provisioning/
 │   │   ├── datasources/  # auto-provision اتصال به Prometheus

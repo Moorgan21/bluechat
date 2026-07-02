@@ -87,7 +87,7 @@ async def show_public_profile_by_code(update: Update, context: ContextTypes.DEFA
     location_line = ""
     if target.province or target.city:
         parts = [p for p in (target.province, target.city) if p]
-        location_line = f"\n📍 موقعیت: {' — '.join(parts)}"
+        location_line = f"\n📍 موقعیت: {html.escape(' — '.join(parts))}"
 
     text = (
         f"👤 پروفایلِ کاربر /user_{code}\n\n"
@@ -404,7 +404,9 @@ async def handle_new_tag_input(update: Update, context: ContextTypes.DEFAULT_TYP
     if not context.user_data.get(AWAITING_NEW_TAG_KEY):
         return False
 
-    text = (update.message.text or "").strip().lstrip("#").strip()
+    from security import sanitize_tag
+    raw = (update.message.text or "").strip().lstrip("#").strip()
+    text = sanitize_tag(raw)
     user_id = update.effective_user.id
 
     if not text or len(text) > 20:
