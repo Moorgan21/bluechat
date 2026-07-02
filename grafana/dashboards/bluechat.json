@@ -1,9 +1,9 @@
 {
   "title": "Blue Chat Bot",
-  "uid": "melogap-bot",
+  "uid": "bluechat-bot",
   "schemaVersion": 38,
   "refresh": "15s",
-  "tags": ["bot", "telegram", "melogap"],
+  "tags": ["bot", "telegram", "bluechat"],
   "style": "dark",
   "time": {"from": "now-6h", "to": "now"},
   "timepicker": {},

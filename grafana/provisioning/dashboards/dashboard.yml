@@ -1,6 +1,6 @@
 apiVersion: 1
 providers:
-  - name: melogap
+  - name: bluechat
     type: file
     options:
       path: /var/lib/grafana/dashboards

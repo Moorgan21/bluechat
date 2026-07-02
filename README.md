@@ -300,7 +300,7 @@ bluechat/
 │   │   ├── datasources/  # auto-provision اتصال به Prometheus
 │   │   └── dashboards/   # auto-provision مسیر داشبوردها
 │   └── dashboards/
-│       └── melogap.json  # داشبورد پیش‌فرض Blue Chat Bot
+│       └── bluechat.json # داشبورد پیش‌فرض Blue Chat Bot
 ├── iran_cities.json      # لیست ۳۱ استان و تمام شهرهای ایران
 ├── LICENSE               # All Rights Reserved
 └── requirements.txt      # وابستگی‌های Python
