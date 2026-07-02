@@ -397,6 +397,17 @@ async def nearby_callback_router(update: Update, context: ContextTypes.DEFAULT_T
 async def post_init(application: Application) -> None:
     await init_db()
     logger.info("دیتابیس مقداردهی اولیه شد.")
+    from telegram import BotCommand
+    await application.bot.set_my_commands([
+        BotCommand("start",    "شروع / منوی اصلی"),
+        BotCommand("stop",     "پایان چت یا خروج از صف"),
+        BotCommand("next",     "چت بعدی — همراه جدید پیدا کن"),
+        BotCommand("settings", "تنظیمات شخصی"),
+        BotCommand("help",     "راهنما"),
+        BotCommand("report",   "گزارش تخلف"),
+        BotCommand("newmsg",   "دریافت پیام‌های ناشناس جدید"),
+        BotCommand("silent",   "حالت سکوت پروفایل عمومی"),
+    ])
 
 
 async def _purge_stale_queue_job(context: ContextTypes.DEFAULT_TYPE) -> None:
