@@ -234,6 +234,7 @@ bluechat/
 ├── db.py                 # مدل‌های دیتابیس و توابع
 ├── redis_client.py       # تمام عملیات Redis
 ├── keyboards.py          # کیبوردهای inline و reply
+├── metrics.py            # متریک‌های Prometheus (counters و gauges)
 ├── schema.sql            # ساختار کامل دیتابیس (از صفر)
 ├── handlers/
 │   ├── chat.py           # منطق چت ناشناس و matching
@@ -251,6 +252,13 @@ bluechat/
 ├── gemini_limiter.py     # rate limiter برای Gemini API (token bucket)
 ├── worker.py             # AI worker — پردازش صف قضاوت در پروسه‌ی جداگانه
 ├── verdict_notify.py     # اطلاع‌رسانی نتیجه‌ی قضاوت (مشترک بین bot و worker)
+├── prometheus.yml        # تنظیمات scrape برای Prometheus
+├── grafana/
+│   ├── provisioning/
+│   │   ├── datasources/  # auto-provision اتصال به Prometheus
+│   │   └── dashboards/   # auto-provision مسیر داشبوردها
+│   └── dashboards/
+│       └── melogap.json  # داشبورد پیش‌فرض Blue Chat Bot
 ├── iran_cities.json      # لیست ۳۱ استان و تمام شهرهای ایران
 ├── LICENSE               # All Rights Reserved
 └── requirements.txt      # وابستگی‌های Python
