@@ -50,7 +50,10 @@ cd bluechat
 cp .env.example .env
 # مقادیر .env رو پر کن
 
-# ۳. اجرا کن
+# ۳. دیتابیس رو بساز
+psql $DATABASE_URL -f schema.sql
+
+# ۴. اجرا کن
 docker compose up -d --build
 ```
 
@@ -75,6 +78,7 @@ bluechat/
 ├── db.py                 # مدل‌های دیتابیس و توابع
 ├── redis_client.py       # تمام عملیات Redis
 ├── keyboards.py          # کیبوردهای inline و reply
+├── schema.sql            # ساختار کامل دیتابیس (از صفر)
 ├── handlers/
 │   ├── chat.py           # منطق چت ناشناس
 │   ├── profile.py        # پروفایل و onboarding
