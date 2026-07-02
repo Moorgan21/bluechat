@@ -109,7 +109,52 @@ DB_MAX_OVERFLOW=40  # حداکثر اتصال اضافه (پیش‌فرض: ۴۰)
 WEBHOOK_URL=        # آدرس کامل webhook — اگه خالی باشه polling استفاده می‌شه
 WEBHOOK_SECRET=     # توکن امنیتی webhook (یه رشته تصادفی)
 WEBHOOK_PORT=8080   # پورت داخلی bot برای دریافت webhook (پیش‌فرض: ۸۰۸۰)
+GRAFANA_PASSWORD=   # رمز ورود Grafana (پیش‌فرض: admin)
 ```
+
+---
+
+## 📊 مانیتورینگ
+
+### معماری
+
+```
+bot / worker  ──► prometheus_client (port 8081)  ─┐
+node-exporter ──► سیستم (CPU، RAM، دیسک)          ├──► Prometheus ──► Grafana
+postgres-exporter ──► دیتابیس                     │
+redis-exporter ──► Redis                          ─┘
+```
+
+### دسترسی به Grafana
+
+پنل مانیتورینگ از طریق nginx روی آدرس زیر در دسترسه:
+
+```
+https://your-domain.com/grafana/
+```
+
+- **user:** `admin`
+- **pass:** مقدار `GRAFANA_PASSWORD` در `.env` (پیش‌فرض: `admin`)
+
+### متریک‌های ربات
+
+| متریک | نوع | توضیح |
+|-------|-----|-------|
+| `bot_active_chats` | Gauge | تعداد چت‌های در حال اجرا |
+| `bot_waiting_users` | Gauge | کاربران در صف انتظار |
+| `bot_ai_queue_size` | Gauge | جاب‌های AI در انتظار پردازش |
+| `bot_messages_relayed_total` | Counter | کل پیام‌های relay شده |
+| `bot_chats_started_total` | Counter | کل چت‌های شروع‌شده |
+| `bot_chats_ended_total` | Counter | کل چت‌های پایان‌یافته |
+| `bot_ai_jobs_processed_total` | Counter | کل جاب‌های AI پردازش‌شده |
+
+### داشبورد پیش‌فرض
+
+داشبورد **Blue Chat Bot** به‌صورت خودکار هنگام راه‌اندازی بارگذاری می‌شه و شامل:
+- وضعیت لحظه‌ای (چت فعال، صف انتظار، صف AI)
+- منابع سرور (CPU، RAM، دیسک)
+- نرخ پیام relay شده در ثانیه
+- اتصالات PostgreSQL و حافظه Redis
 
 ---
 
