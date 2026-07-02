@@ -25,18 +25,17 @@
 خودکار فعال می‌کنه (اگه یوزر دیتابیس دسترسی کافی داشته باشه).
 
 تنظیم اتصال با متغیر محیطی:
-    export DATABASE_URL="postgresql+asyncpg://user:pass@host:5432/melogap"
+    export DATABASE_URL="postgresql+asyncpg://user:pass@host:5432/bluechat"
 
 اگه از ایمیج رسمی postgres:16 استفاده می‌کنی، برای داشتن PostGIS باید
 ایمیج postgis/postgis رو به‌جاش بگیری:
-    docker run -d --name melogap-pg -e POSTGRES_USER=melogap \
-      -e POSTGRES_PASSWORD=melogap -e POSTGRES_DB=melogap \
+    docker run -d --name bluechat-pg -e POSTGRES_USER=bluechat \
+      -e POSTGRES_PASSWORD=bluechat -e POSTGRES_DB=bluechat \
       -p 5432:5432 postgis/postgis:16-3.4
 
-اگه روی همون سروری که Aptic رو داری (188.40.209.105) یه کانتینر Postgres
-جدا بالا بیاری، کافیه همون رشته‌ی اتصال رو با این فرمت بدی. اگه از
-Postgres مشترک با پروژه‌ی دیگه استفاده می‌کنی، فقط یه دیتابیس/اسکیمای
-جدا (مثلاً `melogap`) براش بساز که تداخلی با جداول Aptic نداشته باشه.
+اگه از یه Postgres مشترک با پروژه‌های دیگه روی همون سرور استفاده می‌کنی،
+فقط یه دیتابیس/اسکیمای جدا (مثلاً `bluechat`) براش بساز که تداخلی با
+جداول پروژه‌های دیگه نداشته باشه.
 """
 
 import enum
@@ -63,7 +62,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 DATABASE_URL = os.environ.get(
-    "DATABASE_URL", "postgresql+asyncpg://melogap:melogap@localhost:5432/melogap"
+    "DATABASE_URL", "postgresql+asyncpg://bluechat:bluechat@localhost:5432/bluechat"
 )
 READ_DATABASE_URL = os.environ.get("READ_DATABASE_URL", "").strip() or DATABASE_URL
 

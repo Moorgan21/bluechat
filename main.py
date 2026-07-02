@@ -22,7 +22,7 @@
 متغیرهای محیطی لازم:
     export BOT_TOKEN="توکن ربات از BotFather"
     export BOT_USERNAME="username_ربات (بدون @)"
-    export DATABASE_URL="postgresql+asyncpg://user:pass@host:5432/melogap"
+    export DATABASE_URL="postgresql+asyncpg://user:pass@host:5432/bluechat"
     export REDIS_URL="redis://localhost:6379/0"
 
 اجرا:

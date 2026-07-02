@@ -38,7 +38,7 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(name)s %(levelname)s %(message)s",
 )
-logger = logging.getLogger("melogap.worker")
+logger = logging.getLogger("bluechat.worker")
 
 
 async def _process_job(bot: Bot, job: dict) -> None:
