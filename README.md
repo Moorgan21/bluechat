@@ -96,11 +96,17 @@ docker compose up -d --build
 ```env
 BOT_TOKEN=          # توکن ربات از BotFather
 BOT_USERNAME=       # یوزرنیم ربات (بدون @)
-DATABASE_URL=       # آدرس PostgreSQL
+DATABASE_URL=       # آدرس PostgreSQL (primary)
+READ_DATABASE_URL=  # آدرس read replica — اگه خالی باشه از primary استفاده می‌شه
 REDIS_URL=          # آدرس Redis
 GEMINI_API_KEY=     # کلید Google Gemini (مدیریت محتوا و تصویر)
 DEEPSEEK_API_KEY=   # کلید DeepSeek (قضاوت گزارش‌ها)
 GEMINI_RPM=100      # حداکثر درخواست به Gemini در هر دقیقه (پیش‌فرض: ۱۰۰)
+DB_POOL_SIZE=20     # اندازه connection pool دیتابیس (پیش‌فرض: ۲۰)
+DB_MAX_OVERFLOW=40  # حداکثر اتصال اضافه (پیش‌فرض: ۴۰)
+WEBHOOK_URL=        # آدرس کامل webhook — اگه خالی باشه polling استفاده می‌شه
+WEBHOOK_SECRET=     # توکن امنیتی webhook (یه رشته تصادفی)
+WEBHOOK_PORT=8080   # پورت داخلی bot برای دریافت webhook (پیش‌فرض: ۸۰۸۰)
 ```
 
 ---
@@ -120,11 +126,12 @@ GEMINI_RPM=100      # حداکثر درخواست به Gemini در هر دقیق
 
 ### تصمیم‌های طراحی
 
+- **Webhook به‌جای Polling** — تلگرام آپدیت‌ها رو push می‌کنه؛ latency کمتر، overhead polling حذف شده
 - **asyncio single-process** — تمام I/O غیرمسدودکننده‌ست؛ هیچ عملیاتی event loop رو بلاک نمی‌کنه
-- **قضاوت AI در background** — `asyncio.create_task` باعث می‌شه هندلر گزارش بلافاصله برگرده و DeepSeek/Gemini در پس‌زمینه اجرا بشن
+- **AI worker جداگانه** — `worker.py` در یک پروسه‌ی مستقل از Redis queue می‌خونه؛ crash bot جاب‌ها رو از دست نمیده
 - **Rate limiter برای Gemini** — Token bucket با ظرفیت قابل تنظیم (`GEMINI_RPM`) از خطای ۴۲۹ جلوگیری می‌کنه
 - **Redis برای state لحظه‌ای** — جفت‌شدن، صف انتظار، پیام‌های پین و وضعیت چت همه توی Redis نگه داشته می‌شن تا latency پایین بمونه
-- **PostgreSQL connection pool** — SQLAlchemy async با pool داخلی، از ایجاد اتصال جدید برای هر درخواست جلوگیری می‌کنه
+- **PostgreSQL connection pool** — پیش‌فرض ۲۰+۴۰ اتصال همزمان؛ قابل تنظیم با `DB_POOL_SIZE` و `DB_MAX_OVERFLOW`
 
 ### گلوگاه‌های شناخته‌شده
 
@@ -136,10 +143,10 @@ GEMINI_RPM=100      # حداکثر درخواست به Gemini در هر دقیق
 
 | مرحله | وضعیت | توضیح |
 |-------|--------|-------|
+| Webhook به‌جای Polling | ✅ پیاده شده | روی `https://apticteam.ir/melogap_webhook`؛ با `WEBHOOK_URL` قابل تنظیم |
 | Redis Queue برای AI | ✅ پیاده شده | `worker.py` جداگانه — جاب‌های DeepSeek/Gemini از Redis queue می‌خونه؛ crash-safe |
 | افزایش DB connection pool | ✅ پیاده شده | پیش‌فرض ۲۰+۴۰؛ قابل تنظیم با `DB_POOL_SIZE` و `DB_MAX_OVERFLOW` |
 | Read replica برای PostgreSQL | ✅ زیرساخت آماده | تنظیم `READ_DATABASE_URL` در `.env` کافیه؛ بدون آن روی primary fallback می‌شه |
-| Webhook به‌جای Polling | ⏳ نیاز به دامنه | برای فعال‌سازی، دامنه‌ی HTTPS و nginx reverse proxy لازمه |
 
 ---
 
