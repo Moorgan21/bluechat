@@ -69,6 +69,10 @@ async def show_coin_history(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         reason_labels = {
             "referral_bonus": "پاداش دعوت دوست",
             "failed_chat_refund": "بازگشت وجه (چت ناموفق)",
+            "chat_request_cost": "هزینه‌ی درخواست چت",
+            "chat_request_reject_refund": "بازگشت وجه (درخواست چت رد شد)",
+            "chat_request_timeout_refund": "بازگشت وجه (درخواست چت بی‌پاسخ ماند)",
+            "direct_msg_cost": "هزینه‌ی پیام دایرکت",
         }
         lines = ["📜 آخرین تراکنش‌های سکه:\n"]
         for tx in transactions:

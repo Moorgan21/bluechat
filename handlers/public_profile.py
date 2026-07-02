@@ -18,8 +18,9 @@
 چتِ فعال، به‌همراه دکمه‌های گزارشِ پروفایل، درخواستِ چت، بلاک، و ارسالِ
 واکنش (در صورت فعال‌بودنش توسطِ صاحبِ پروفایل).
 
-جریانِ درخواستِ چت:
-    ۱. A روی «💬 درخواست چت» زیرِ پروفایلِ B می‌زنه.
+جریانِ درخواستِ چت (هزینه: rc.CHAT_COIN_COST سکه، از A کسر می‌شه):
+    ۱. A روی «💬 درخواست چت» زیرِ پروفایلِ B می‌زنه → به‌شرطِ داشتنِ سکه‌ی
+       کافی، سکه کسر می‌شه و «✅ درخواستِ چتت ارسال شد» می‌بینه.
     ۲. B فقط یه نوتیفِ کوتاه می‌گیره: «🔔 یه درخواستِ چت داری...» با دکمه‌ی
        «👀 مشاهده درخواست چت» (بدونِ کد یا جزئیاتِ دیگه‌ای از A — هویتِ A
        توی همین نوتیفِ اول اصلاً افشا نمی‌شه).
@@ -27,8 +28,14 @@
        دکمه‌های «✅ قبول» / «❌ رد» نشون داده می‌شه، و همزمان به A اطلاع
        داده می‌شه که «👀 کاربر درخواستِ چتت رو دید.»
     ۴. اگه B قبول کنه: به‌شرطی که هیچ‌کدوم از دو طرف چتِ فعال نداشته
-       باشن، یه چتِ کاملِ دوطرفه (مثلِ matching عادی) باز می‌شه.
-    ۵. اگه B رد کنه: به A پیام می‌ره که درخواستش رد شد.
+       باشن، یه چتِ کاملِ دوطرفه (مثلِ matching عادی) باز می‌شه. سکه‌ی
+       کسرشده برنمی‌گرده (هزینه‌ی چتِ واقعاً برقرارشده است).
+    ۵. اگه B رد کنه: سکه به A برمی‌گرده و پیام می‌ره که درخواستش به
+       پروفایلِ عمومیِ B رد شد.
+    ۶. اگه ۲ دقیقه (rc.CHAT_REQUEST_TIMEOUT_SECONDS) بگذره و B نه قبول
+       کنه نه رد (حتی مشاهده هم نکنه)، یه jobِ پس‌زمینه‌ای
+       (main.py:_expire_chat_requests_job) خودکار لغوش می‌کنه، سکه به A
+       برمی‌گرده، و بهش اطلاع داده می‌شه.
 
 جریانِ واکنش:
     هر کاربر توی تنظیماتِ پروفایلِ خودش می‌تونه دریافتِ واکنش رو فعال/
@@ -57,6 +64,7 @@ from db import (
     async_session,
     add_reaction_tag,
     block_sender,
+    deduct_coins,
     delete_reaction_tag,
     get_reaction_counts,
     get_reaction_tag,
@@ -64,6 +72,7 @@ from db import (
     increment_total_chats,
     list_reaction_tags,
     log_reaction,
+    refund_coins,
     set_reactions_enabled,
     set_silent_mode,
 )
@@ -208,7 +217,14 @@ async def handle_chat_request_button(update: Update, context: ContextTypes.DEFAU
         )
         return
 
-    request_id = await rc.create_chat_request(requester_id)
+    new_balance = await deduct_coins(requester_id, rc.CHAT_COIN_COST, "chat_request_cost")
+    if new_balance is None:
+        await query.message.reply_text(
+            f"🪙 سکه‌ی کافی نداری! ارسالِ درخواستِ چت {rc.CHAT_COIN_COST} سکه هزینه داره."
+        )
+        return
+
+    request_id = await rc.create_chat_request(requester_id, target_id)
 
     await query.message.reply_text("✅ درخواستِ چتت ارسال شد.")
 
@@ -237,12 +253,13 @@ async def handle_view_chat_request(update: Update, context: ContextTypes.DEFAULT
     await query.answer()
 
     request_id = query.data.split(":", 1)[1]
-    requester_id = await rc.get_chat_request_requester(request_id)
+    request_data = await rc.get_chat_request(request_id)
 
-    if requester_id is None:
+    if request_data is None:
         await query.edit_message_text("⚠️ این درخواست دیگه معتبر نیست (منقضی شده یا قبلاً پاسخ داده شده).")
         return
 
+    requester_id = request_data["requester_id"]
     requester = await async_session_get_user(requester_id)
     if requester is None:
         await query.edit_message_text("⚠️ این کاربر دیگه در دسترس نیست.")
@@ -279,12 +296,14 @@ async def handle_chat_request_accept(update: Update, context: ContextTypes.DEFAU
     await query.answer()
 
     request_id = query.data.split(":", 1)[1]
-    requester_id = await rc.get_chat_request_requester(request_id)
+    request_data = await rc.get_chat_request(request_id)
     acceptor_id = query.from_user.id
 
-    if requester_id is None:
+    if request_data is None:
         await query.edit_message_text("⚠️ این درخواست دیگه معتبر نیست.")
         return
+
+    requester_id = request_data["requester_id"]
 
     if await rc.get_partner(acceptor_id) is not None or await rc.get_partner(requester_id) is not None:
         await query.edit_message_text(
@@ -331,14 +350,24 @@ async def handle_chat_request_reject(update: Update, context: ContextTypes.DEFAU
     await query.answer()
 
     request_id = query.data.split(":", 1)[1]
-    requester_id = await rc.get_chat_request_requester(request_id)
+    request_data = await rc.get_chat_request(request_id)
+    rejector_id = query.from_user.id
 
     await rc.clear_chat_request(request_id)
     await query.edit_message_text("❌ درخواست رد شد.")
 
-    if requester_id is not None:
+    if request_data is not None:
+        requester_id = request_data["requester_id"]
+        await refund_coins(requester_id, rc.CHAT_COIN_COST, "chat_request_reject_refund")
+
+        rejector = await async_session_get_user(rejector_id)
+        rejector_code = rejector.referral_code if rejector else "نامشخص"
         try:
-            await context.bot.send_message(requester_id, "❌ درخواست چت شما رد شد.")
+            await context.bot.send_message(
+                requester_id,
+                f"❌ درخواست چتِ شما به پروفایلِ عمومیِ /user_{rejector_code} رد شد و "
+                f"{rc.CHAT_COIN_COST} سکه به حسابتون برگشت.",
+            )
         except TelegramError:
             pass
 

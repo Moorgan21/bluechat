@@ -45,6 +45,7 @@ import logging
 import os
 
 from telegram import Update
+from telegram.error import TelegramError
 from telegram.ext import (
     Application,
     CallbackQueryHandler,
@@ -58,7 +59,7 @@ from telegram.ext import (
 import redis_client as rc
 import metrics
 import spam_guard
-from db import init_db, get_or_create_user, async_session
+from db import init_db, get_or_create_user, async_session, refund_coins
 from handlers import anon_note, chat, coins, menu, nearby, profile, public_profile, report, search, settings
 
 logging.basicConfig(
@@ -471,6 +472,28 @@ async def _purge_stale_queue_job(context: ContextTypes.DEFAULT_TYPE) -> None:
         logger.info("پاکسازی صف: %d ورودی منقضی‌شده حذف شد.", removed)
 
 
+async def _expire_chat_requests_job(context: ContextTypes.DEFAULT_TYPE) -> None:
+    """هر ۳۰ ثانیه: درخواست‌های چتی که بیشتر از ۲ دقیقه بدونِ پاسخ (نه
+    قبول نه رد) موندن رو خودکار لغو می‌کنه، سکه‌ی هزینه‌شده رو به
+    درخواست‌کننده برمی‌گردونه، و بهش اطلاع می‌ده."""
+    expired = await rc.pop_expired_chat_requests()
+    for item in expired:
+        requester_id = item["requester_id"]
+        target_id = item["target_id"]
+        await refund_coins(requester_id, rc.CHAT_COIN_COST, "chat_request_timeout_refund")
+
+        target = await public_profile.async_session_get_user(target_id)
+        target_code = target.referral_code if target else "نامشخص"
+        try:
+            await context.bot.send_message(
+                requester_id,
+                f"⏳ درخواست چتِ شما به پروفایلِ عمومیِ /user_{target_code} وضعیتش نامعلوم موند "
+                f"(بدونِ پاسخ) و {rc.CHAT_COIN_COST} سکه به حسابتون برگشت.",
+            )
+        except TelegramError:
+            pass
+
+
 async def _purge_old_messages_job(context: ContextTypes.DEFAULT_TYPE) -> None:
     """هر ۲۴ ساعت اجرا می‌شه: پیام‌های متنیِ قدیمی‌تر از ۲۴ ساعت رو از
     Postgres پاک می‌کنه (مستقل از پاک‌کردنِ دستیِ دوطرفه). این کار
@@ -516,6 +539,7 @@ def main() -> None:
 
     app.job_queue.run_repeating(_purge_old_messages_job, interval=60 * 60 * 24, first=60 * 5)
     app.job_queue.run_repeating(_purge_stale_queue_job, interval=60 * 3, first=30)
+    app.job_queue.run_repeating(_expire_chat_requests_job, interval=30, first=30)
 
     app.job_queue.run_repeating(_update_metrics_job, interval=15, first=10)
 

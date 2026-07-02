@@ -63,12 +63,22 @@ async def send_direct_msg(
     owner_id: int, sender_id: int, update: Update, context: ContextTypes.DEFAULT_TYPE
 ) -> None:
     """پیام دایرکت — شناسه‌ی عمومی فرستنده (/user_<code>) به مقصد نشون
-    داده می‌شه. در صورت بلاک‌بودن، بی‌سروصدا رد می‌شه."""
+    داده می‌شه. هر پیامِ دایرکت rc.DIRECT_MSG_COIN_COST سکه هزینه داره؛
+    این سکه در لحظه‌ی ارسال کسر می‌شه، مستقل از اینکه مقصد پیام رو
+    ببینه یا نه (برخلافِ پیامِ ناشناس که رایگانه). در صورت بلاک‌بودن،
+    بی‌سروصدا رد می‌شه (بدونِ کسرِ سکه، چون پیام اصلاً تحویل داده
+    نمی‌شه)."""
     from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-    from db import User, async_session
+    from db import User, async_session, deduct_coins
 
     if await is_sender_blocked(owner_id, sender_id):
         await update.message.reply_text("✅ پیامت ارسال شد.")
+        return
+
+    if await deduct_coins(sender_id, rc.DIRECT_MSG_COIN_COST, "direct_msg_cost") is None:
+        await update.message.reply_text(
+            f"🪙 سکه‌ی کافی نداری! ارسالِ پیامِ دایرکت {rc.DIRECT_MSG_COIN_COST} سکه هزینه داره."
+        )
         return
 
     async with async_session() as session:
