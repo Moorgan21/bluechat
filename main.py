@@ -41,6 +41,7 @@ from telegram.ext import (
 )
 
 import redis_client as rc
+import metrics
 from db import init_db, get_or_create_user, async_session
 from handlers import anon_note, chat, coins, menu, nearby, profile, public_profile, report, search, settings
 
@@ -412,6 +413,16 @@ async def post_init(application: Application) -> None:
     ])
 
 
+async def _update_metrics_job(context: ContextTypes.DEFAULT_TYPE) -> None:
+    try:
+        total = 0
+        for gender in ("male", "female", "other", "unknown"):
+            total += await rc.r.zcard(f"melogap:waiting_queue:{gender}")
+        metrics.waiting_users.set(total)
+    except Exception:
+        pass
+
+
 async def _purge_stale_queue_job(context: ContextTypes.DEFAULT_TYPE) -> None:
     """هر ۳ دقیقه: ورودی‌های منقضی‌شده‌ی صف matching رو پاک می‌کنه.
     در صورت ریستارت ربات، صف Redis پاک نمی‌شه — این job از zombie entry جلوگیری می‌کنه."""
@@ -466,6 +477,9 @@ def main() -> None:
     app.job_queue.run_repeating(_purge_old_messages_job, interval=60 * 60 * 24, first=60 * 5)
     app.job_queue.run_repeating(_purge_stale_queue_job, interval=60 * 3, first=30)
 
+    app.job_queue.run_repeating(_update_metrics_job, interval=15, first=10)
+
+    metrics.start_metrics_server()
     logger.info("ربات در حال اجراست...")
     if WEBHOOK_URL:
         app.run_webhook(

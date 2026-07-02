@@ -12,6 +12,7 @@ import os
 from telegram import Bot
 
 import redis_client as rc
+import metrics
 from judge import judge_report
 from profile_judge import judge_profile_report
 from verdict_notify import notify_chat_verdict, notify_profile_verdict
@@ -41,6 +42,7 @@ async def _process_job(bot: Bot, job: dict) -> None:
         except Exception:
             logger.exception("خطا در judge_report report_id=%s", job.get("report_id"))
             result = {"verdict": "pending"}
+        metrics.ai_jobs_done.labels(type="chat_report").inc()
         await notify_chat_verdict(bot, job["reporter_id"], job["reported_id"], result)
 
     elif job_type == "profile_report":
@@ -57,15 +59,28 @@ async def _process_job(bot: Bot, job: dict) -> None:
         except Exception:
             logger.exception("خطا در judge_profile_report id=%s", job.get("profile_report_id"))
             result = {"verdict": "pending"}
+        metrics.ai_jobs_done.labels(type="profile_report").inc()
         await notify_profile_verdict(bot, job["reporter_id"], job["reported_id"], result)
 
     else:
         logger.warning("نوع job ناشناخته: %s", job_type)
 
 
+async def _update_queue_gauge() -> None:
+    while True:
+        try:
+            size = await rc.r.llen(rc.KEY_AI_JOBS)
+            metrics.ai_queue_size.set(size)
+        except Exception:
+            pass
+        await asyncio.sleep(15)
+
+
 async def main() -> None:
+    metrics.start_metrics_server()
     bot = Bot(token=BOT_TOKEN)
     logger.info("AI worker started — listening for jobs")
+    asyncio.create_task(_update_queue_gauge())
     while True:
         try:
             job = await rc.pop_ai_job(timeout=5)

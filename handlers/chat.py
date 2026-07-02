@@ -15,6 +15,7 @@ from telegram.error import TelegramError
 from telegram.ext import ContextTypes
 
 import redis_client as rc
+import metrics
 from db import (
     ChatSession,
     User,
@@ -105,6 +106,8 @@ async def try_match(user_id: int, context: ContextTypes.DEFAULT_TYPE, desired_ge
     )
     for uid in (user_id, partner_id):
         await context.bot.send_message(uid, text, reply_markup=in_chat_reply_keyboard())
+    metrics.chats_started.inc()
+    metrics.active_chats.inc()
     return True
 
 
@@ -251,6 +254,8 @@ async def _end_session_record(user_a: int, user_b: int, ended_by: int) -> int | 
             await session.commit()
     await rc.clear_session_id(user_a)
     await rc.clear_session_id(user_b)
+    metrics.chats_ended.inc()
+    metrics.active_chats.dec()
     return session_id
 
 
@@ -479,6 +484,7 @@ async def relay_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             return
 
         if sent_msg is not None:
+            metrics.messages_relayed.inc()
             await rc.link_messages(user_id, msg.message_id, partner_id, sent_msg.message_id)
             await rc.record_message(user_id, msg.message_id)
             await rc.record_message(partner_id, sent_msg.message_id)

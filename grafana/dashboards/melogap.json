@@ -1,0 +1,101 @@
+{
+  "title": "Blue Chat Bot",
+  "uid": "melogap-bot",
+  "schemaVersion": 38,
+  "refresh": "15s",
+  "panels": [
+    {
+      "id": 1, "type": "stat", "title": "چت‌های فعال",
+      "gridPos": {"x": 0, "y": 0, "w": 4, "h": 4},
+      "targets": [{"expr": "bot_active_chats", "datasource": "Prometheus"}],
+      "options": {"colorMode": "background"},
+      "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "thresholds": {"steps": [{"color": "green", "value": 0}]}}}
+    },
+    {
+      "id": 2, "type": "stat", "title": "کاربران در صف انتظار",
+      "gridPos": {"x": 4, "y": 0, "w": 4, "h": 4},
+      "targets": [{"expr": "bot_waiting_users", "datasource": "Prometheus"}],
+      "options": {"colorMode": "background"},
+      "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "thresholds": {"steps": [{"color": "blue", "value": 0}, {"color": "orange", "value": 50}]}}}
+    },
+    {
+      "id": 3, "type": "stat", "title": "صف AI (جاب‌های pending)",
+      "gridPos": {"x": 8, "y": 0, "w": 4, "h": 4},
+      "targets": [{"expr": "bot_ai_queue_size", "datasource": "Prometheus"}],
+      "options": {"colorMode": "background"},
+      "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "thresholds": {"steps": [{"color": "green", "value": 0}, {"color": "orange", "value": 20}, {"color": "red", "value": 50}]}}}
+    },
+    {
+      "id": 4, "type": "stat", "title": "CPU",
+      "gridPos": {"x": 12, "y": 0, "w": 4, "h": 4},
+      "targets": [{"expr": "100 - (avg by(instance)(irate(node_cpu_seconds_total{mode=\"idle\"}[1m])) * 100)", "datasource": "Prometheus"}],
+      "options": {"colorMode": "background"},
+      "fieldConfig": {"defaults": {"unit": "percent", "color": {"mode": "thresholds"}, "thresholds": {"steps": [{"color": "green", "value": 0}, {"color": "orange", "value": 70}, {"color": "red", "value": 90}]}}}
+    },
+    {
+      "id": 5, "type": "stat", "title": "RAM استفاده‌شده",
+      "gridPos": {"x": 16, "y": 0, "w": 4, "h": 4},
+      "targets": [{"expr": "(1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100", "datasource": "Prometheus"}],
+      "options": {"colorMode": "background"},
+      "fieldConfig": {"defaults": {"unit": "percent", "color": {"mode": "thresholds"}, "thresholds": {"steps": [{"color": "green", "value": 0}, {"color": "orange", "value": 70}, {"color": "red", "value": 85}]}}}
+    },
+    {
+      "id": 6, "type": "stat", "title": "دیسک استفاده‌شده",
+      "gridPos": {"x": 20, "y": 0, "w": 4, "h": 4},
+      "targets": [{"expr": "(1 - node_filesystem_avail_bytes{mountpoint=\"/\"} / node_filesystem_size_bytes{mountpoint=\"/\"}) * 100", "datasource": "Prometheus"}],
+      "options": {"colorMode": "background"},
+      "fieldConfig": {"defaults": {"unit": "percent", "color": {"mode": "thresholds"}, "thresholds": {"steps": [{"color": "green", "value": 0}, {"color": "orange", "value": 75}, {"color": "red", "value": 90}]}}}
+    },
+    {
+      "id": 7, "type": "timeseries", "title": "پیام‌های relay شده در ثانیه",
+      "gridPos": {"x": 0, "y": 4, "w": 12, "h": 8},
+      "targets": [{"expr": "rate(bot_messages_relayed_total[1m])", "legendFormat": "msg/s", "datasource": "Prometheus"}],
+      "fieldConfig": {"defaults": {"unit": "reqps", "color": {"mode": "palette-classic"}}}
+    },
+    {
+      "id": 8, "type": "timeseries", "title": "چت شروع‌شده / پایان‌یافته",
+      "gridPos": {"x": 12, "y": 4, "w": 12, "h": 8},
+      "targets": [
+        {"expr": "rate(bot_chats_started_total[5m])", "legendFormat": "شروع‌شده", "datasource": "Prometheus"},
+        {"expr": "rate(bot_chats_ended_total[5m])", "legendFormat": "پایان‌یافته", "datasource": "Prometheus"}
+      ],
+      "fieldConfig": {"defaults": {"unit": "reqps", "color": {"mode": "palette-classic"}}}
+    },
+    {
+      "id": 9, "type": "timeseries", "title": "CPU سرور",
+      "gridPos": {"x": 0, "y": 12, "w": 8, "h": 8},
+      "targets": [{"expr": "100 - (avg by(instance)(irate(node_cpu_seconds_total{mode=\"idle\"}[1m])) * 100)", "legendFormat": "CPU %", "datasource": "Prometheus"}],
+      "fieldConfig": {"defaults": {"unit": "percent", "max": 100}}
+    },
+    {
+      "id": 10, "type": "timeseries", "title": "RAM سرور",
+      "gridPos": {"x": 8, "y": 12, "w": 8, "h": 8},
+      "targets": [
+        {"expr": "node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes", "legendFormat": "استفاده‌شده", "datasource": "Prometheus"},
+        {"expr": "node_memory_MemTotal_bytes", "legendFormat": "کل", "datasource": "Prometheus"}
+      ],
+      "fieldConfig": {"defaults": {"unit": "bytes"}}
+    },
+    {
+      "id": 11, "type": "timeseries", "title": "Redis — حافظه",
+      "gridPos": {"x": 16, "y": 12, "w": 8, "h": 8},
+      "targets": [{"expr": "redis_memory_used_bytes", "legendFormat": "used", "datasource": "Prometheus"}],
+      "fieldConfig": {"defaults": {"unit": "bytes"}}
+    },
+    {
+      "id": 12, "type": "timeseries", "title": "PostgreSQL — اتصالات فعال",
+      "gridPos": {"x": 0, "y": 20, "w": 12, "h": 8},
+      "targets": [{"expr": "pg_stat_activity_count", "legendFormat": "connections", "datasource": "Prometheus"}],
+      "fieldConfig": {"defaults": {"color": {"mode": "palette-classic"}}}
+    },
+    {
+      "id": 13, "type": "timeseries", "title": "AI jobs پردازش‌شده",
+      "gridPos": {"x": 12, "y": 20, "w": 12, "h": 8},
+      "targets": [
+        {"expr": "rate(bot_ai_jobs_processed_total{type=\"chat_report\"}[5m])", "legendFormat": "chat report", "datasource": "Prometheus"},
+        {"expr": "rate(bot_ai_jobs_processed_total{type=\"profile_report\"}[5m])", "legendFormat": "profile report", "datasource": "Prometheus"}
+      ],
+      "fieldConfig": {"defaults": {"unit": "reqps"}}
+    }
+  ]
+}

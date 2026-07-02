@@ -31,6 +31,7 @@ services:
       WEBHOOK_URL: ${WEBHOOK_URL:-}
       WEBHOOK_SECRET: ${WEBHOOK_SECRET:-}
       WEBHOOK_PORT: ${WEBHOOK_PORT:-8080}
+      METRICS_PORT: 8081
 
   worker:
     build: .
@@ -51,6 +52,56 @@ services:
       DB_POOL_SIZE: ${DB_POOL_SIZE:-20}
       DB_MAX_OVERFLOW: ${DB_MAX_OVERFLOW:-40}
       REDIS_URL: redis://redis:6379/0
+      METRICS_PORT: 8081
+
+  prometheus:
+    image: prom/prometheus:v2.52.0
+    restart: unless-stopped
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - melogap_prometheus_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.retention.time=15d"
+
+  grafana:
+    image: grafana/grafana:11.0.0
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - melogap_grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+
+  node-exporter:
+    image: prom/node-exporter:v1.8.0
+    restart: unless-stopped
+    pid: host
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - "--path.procfs=/host/proc"
+      - "--path.rootfs=/rootfs"
+      - "--path.sysfs=/host/sys"
+      - "--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)"
+
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:v0.15.0
+    restart: unless-stopped
+    environment:
+      DATA_SOURCE_NAME: postgresql://melogap:melogap@postgres:5432/melogap?sslmode=disable
+
+  redis-exporter:
+    image: oliver006/redis_exporter:v1.62.0
+    restart: unless-stopped
+    environment:
+      REDIS_ADDR: redis://redis:6379
 
   postgres:
     image: postgis/postgis:16-3.4
@@ -81,3 +132,5 @@ services:
 volumes:
   melogap_pgdata:
   melogap_redisdata:
+  melogap_prometheus_data:
+  melogap_grafana_data:
