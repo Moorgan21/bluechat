@@ -508,6 +508,39 @@ async def relay_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         await update.message.reply_text("⚠️ ارسال پیام با خطا مواجه شد. همراهت شاید ربات رو بلاک کرده.")
 
 
+async def relay_edit(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """وقتی کاربر پیام متنی‌اش رو ویرایش می‌کنه، نسخه‌ی relay‌شده هم آپدیت میشه."""
+    msg = update.edited_message
+    if msg is None or not msg.text:
+        return
+
+    user_id = msg.from_user.id
+    partner_id = await rc.get_partner(user_id)
+    if partner_id is None:
+        return
+
+    linked = await rc.get_linked_message(user_id, msg.message_id)
+    if linked is None:
+        return
+
+    _, partner_msg_id = linked
+
+    from datetime import datetime, timezone, timedelta
+    edit_time = datetime.now(tz=timezone(timedelta(hours=3, minutes=30)))
+    time_str = edit_time.strftime("%H:%M")
+
+    secure = await rc.is_secure_chat(user_id)
+    try:
+        await context.bot.edit_message_text(
+            chat_id=partner_id,
+            message_id=partner_msg_id,
+            text=f"{msg.text}\n\n✏️ ویرایش شده · {time_str}",
+            protect_content=secure,
+        )
+    except TelegramError:
+        pass
+
+
 async def relay_reaction(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     reaction_update = update.message_reaction
     if reaction_update is None or reaction_update.user is None:

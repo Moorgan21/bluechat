@@ -446,6 +446,7 @@ def main() -> None:
             media_router,
         )
     )
+    app.add_handler(MessageHandler(filters.UpdateType.EDITED_MESSAGE & filters.TEXT, chat.relay_edit))
     app.add_handler(MessageReactionHandler(chat.relay_reaction))
     app.add_handler(CallbackQueryHandler(callback_router))
 
