@@ -49,10 +49,12 @@ KEY_SESSION_ID = "melogap:session_id:{user_id}"      # آی‌دی رکورد Ch
 KEY_LAST_SEEN = "melogap:last_seen:{user_id}"        # timestamp آخرین فعالیت کاربر در ربات
 KEY_CHAT_START = "melogap:chat_start:{user_id}"      # timestamp شروع چت جاری
 KEY_RECENT_PARTNER = "melogap:recent:{user_id}:{partner_id}"  # وجود key = نمی‌شه دوباره match شد
+KEY_CHAT_PAYER = "melogap:chat_payer:{user_id}"              # کاربر برای این چت سکه خرج کرده
+KEY_CHAT_MSG_COUNT = "melogap:chat_msgs:{pair_key}"          # تعداد کل پیام‌های رد و بدل شده
 
 MIN_CHAT_SECONDS = 10  # حداقل مدت حضور در چت قبل از اجازه‌ی بستن
-
 TTL_RECENT_PARTNERS = 60 * 10  # ۱۰ دقیقه
+CHAT_COIN_COST = 2              # هزینه‌ی جستجو با فیلتر جنسیت
 
 # --- کلیدهای پیام‌های ناشناسِ نوتیفی (از طریق لینک ناشناس مستقیم) ---
 # هر پیامی که از طریق لینک مستقیم ارسال می‌شه، یه note_id یکتا می‌گیره
@@ -149,6 +151,29 @@ async def add_recent_partners(user_a: int, user_b: int) -> None:
 
 async def is_recent_partner(user_id: int, candidate_id: int) -> bool:
     return bool(await r.exists(KEY_RECENT_PARTNER.format(user_id=user_id, partner_id=candidate_id)))
+
+
+async def set_chat_payer(user_id: int) -> None:
+    """علامت می‌زنه که این کاربر برای چت جاری سکه خرج کرده."""
+    await r.set(KEY_CHAT_PAYER.format(user_id=user_id), "1", ex=60 * 60 * 12)
+
+
+async def is_chat_payer(user_id: int) -> bool:
+    return bool(await r.exists(KEY_CHAT_PAYER.format(user_id=user_id)))
+
+
+async def increment_chat_msg_count(user_a: int, user_b: int) -> int:
+    """بعد از هر پیام موفق، شمارنده رو یه واحد بالا می‌بره."""
+    key = KEY_CHAT_MSG_COUNT.format(pair_key=pair_key(user_a, user_b))
+    val = await r.incr(key)
+    await r.expire(key, 60 * 60 * 24)
+    return int(val)
+
+
+async def get_chat_msg_count(user_a: int, user_b: int) -> int:
+    key = KEY_CHAT_MSG_COUNT.format(pair_key=pair_key(user_a, user_b))
+    val = await r.get(key)
+    return int(val) if val else 0
 
 
 async def pop_matching_waiting(user_id: int, desired_gender: Optional[str]) -> Optional[int]:
@@ -248,6 +273,9 @@ async def clear_partner(user_id: int) -> Optional[int]:
         await r.delete(KEY_SECURE_CHAT.format(user_id=user_id))
         await r.delete(KEY_CHAT_START.format(user_id=user_id))
         await r.delete(KEY_CHAT_START.format(user_id=partner_id))
+        await r.delete(KEY_CHAT_PAYER.format(user_id=user_id))
+        await r.delete(KEY_CHAT_PAYER.format(user_id=partner_id))
+        await r.delete(KEY_CHAT_MSG_COUNT.format(pair_key=pair_key(user_id, partner_id)))
     return partner_id
 
 

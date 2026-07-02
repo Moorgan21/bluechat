@@ -12,7 +12,7 @@ from telegram import Update
 from telegram.ext import ContextTypes
 
 import redis_client as rc
-from db import Gender, User, async_session, get_or_create_user
+from db import Gender, User, async_session, deduct_coins, get_or_create_user
 from handlers.chat import try_match
 from keyboards import search_users_keyboard
 
@@ -124,6 +124,19 @@ async def run_search(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     if await rc.get_partner(user_id) is not None:
         await query.edit_message_text("الان توی یه گفتگو هستی.")
         return
+
+    # کسر سکه اگه فیلتر جنسیت داشت
+    gender_filter = filters_.get("gender")
+    if gender_filter:
+        new_balance = await deduct_coins(user_id, rc.CHAT_COIN_COST, "gender_search")
+        if new_balance is None:
+            await query.edit_message_text(
+                f"🪙 سکه‌ی کافی نداری!\n"
+                f"جستجو با فیلتر جنسیت {rc.CHAT_COIN_COST} سکه هزینه داره.\n"
+                "برای جستجوی رایگان فیلتر جنسیت رو حذف کن."
+            )
+            return
+        await rc.set_chat_payer(user_id)
 
     candidate_ids: list[int] = []
     for gender in rc.PARTNER_GENDERS:

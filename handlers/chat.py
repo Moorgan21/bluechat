@@ -19,9 +19,11 @@ from db import (
     User,
     async_session,
     clear_photo_file_id,
+    deduct_coins,
     get_or_create_user,
     increment_total_chats,
     mark_session_history_deleted,
+    refund_coins,
     store_chat_message,
 )
 from keyboards import (
@@ -201,6 +203,17 @@ async def handle_desired_gender_callback(update: Update, context: ContextTypes.D
         await query.edit_message_text("در حال حاضر توی صف انتظاری. کمی صبر کن 🙂")
         return
 
+    if desired_gender is not None:
+        new_balance = await deduct_coins(user_id, rc.CHAT_COIN_COST, "gender_search")
+        if new_balance is None:
+            await query.edit_message_text(
+                f"🪙 سکه‌ی کافی نداری!\n"
+                f"جستجو با فیلتر جنسیت {rc.CHAT_COIN_COST} سکه هزینه داره.\n"
+                "برای جستجوی رایگان «فرقی نمی‌کنه» رو انتخاب کن."
+            )
+            return
+        await rc.set_chat_payer(user_id)
+
     await query.edit_message_text("👋 در حال جستجوی یه همراه برات هستم...")
     await try_match(user_id, context, desired_gender)
 
@@ -244,6 +257,13 @@ async def stop_chat(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await update.effective_message.reply_text("از صف انتظار خارج شدی.", reply_markup=main_reply_keyboard())
         return
 
+    # پیش از clear_partner، وضعیت payer و تعداد پیام‌ها رو می‌گیریم
+    partner_id = await rc.get_partner(user_id)
+    if partner_id is not None:
+        msg_count = await rc.get_chat_msg_count(user_id, partner_id)
+        user_is_payer = await rc.is_chat_payer(user_id)
+        partner_is_payer = await rc.is_chat_payer(partner_id)
+
     partner_id = await rc.clear_partner(user_id)
     if partner_id is not None:
         session_id = await _end_session_record(user_id, partner_id, ended_by=user_id)
@@ -254,18 +274,28 @@ async def stop_chat(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
         ender_name = (ender.display_name or "کاربر") if ender else "کاربر"
         partner_name = (partner.display_name or "کاربر") if partner else "کاربر"
-
         partner_profile = f"\n👤 پروفایل عمومی: /u_{partner.referral_code}" if (partner and partner.referral_code) else ""
         ender_profile = f"\n👤 پروفایل عمومی: /u_{ender.referral_code}" if (ender and ender.referral_code) else ""
 
+        # بازگشت سکه اگه چت ناموفق بود (کمتر از ۳ پیام)
+        ender_refund_note = ""
+        partner_refund_note = ""
+        if msg_count < 3:
+            if user_is_payer:
+                await refund_coins(user_id, rc.CHAT_COIN_COST, "failed_chat_refund")
+                ender_refund_note = f"\n🪙 بعلت ناموفق بودن چت، {rc.CHAT_COIN_COST} سکه برگشت به حساب شما."
+            if partner_is_payer:
+                await refund_coins(partner_id, rc.CHAT_COIN_COST, "failed_chat_refund")
+                partner_refund_note = f"\n🪙 بعلت ناموفق بودن چت، {rc.CHAT_COIN_COST} سکه برگشت به حساب شما."
+
         await update.effective_message.reply_text(
-            f"چت شما با {partner_name} توسط شما به پایان رسید.{partner_profile}",
+            f"چت شما با {partner_name} توسط شما به پایان رسید.{partner_profile}{ender_refund_note}",
             reply_markup=main_reply_keyboard(),
         )
         try:
             await context.bot.send_message(
                 partner_id,
-                f"چت شما با {ender_name} توسط مقابل به پایان رسید.{ender_profile}",
+                f"چت شما با {ender_name} توسط مقابل به پایان رسید.{ender_profile}{partner_refund_note}",
                 reply_markup=main_reply_keyboard(),
             )
         except TelegramError:
@@ -281,6 +311,15 @@ async def stop_chat(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 async def next_chat(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_id = update.effective_user.id
 
+    prev_partner = await rc.get_partner(user_id)
+    prev_msg_count = 0
+    prev_user_is_payer = False
+    prev_partner_is_payer = False
+    if prev_partner is not None:
+        prev_msg_count = await rc.get_chat_msg_count(user_id, prev_partner)
+        prev_user_is_payer = await rc.is_chat_payer(user_id)
+        prev_partner_is_payer = await rc.is_chat_payer(prev_partner)
+
     partner_id = await rc.clear_partner(user_id)
     if partner_id is not None:
         session_id = await _end_session_record(user_id, partner_id, ended_by=user_id)
@@ -290,10 +329,19 @@ async def next_chat(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
         ender_name = (ender.display_name or "کاربر") if ender else "کاربر"
         ender_profile = f"\n👤 پروفایل عمومی: /u_{ender.referral_code}" if (ender and ender.referral_code) else ""
+
+        partner_refund_note = ""
+        if prev_msg_count < 3:
+            if prev_user_is_payer:
+                await refund_coins(user_id, rc.CHAT_COIN_COST, "failed_chat_refund")
+            if prev_partner_is_payer:
+                await refund_coins(partner_id, rc.CHAT_COIN_COST, "failed_chat_refund")
+                partner_refund_note = f"\n🪙 بعلت ناموفق بودن چت، {rc.CHAT_COIN_COST} سکه برگشت به حساب شما."
+
         try:
             await context.bot.send_message(
                 partner_id,
-                f"چت شما با {ender_name} توسط مقابل به پایان رسید.{ender_profile}",
+                f"چت شما با {ender_name} توسط مقابل به پایان رسید.{ender_profile}{partner_refund_note}",
                 reply_markup=main_reply_keyboard(),
             )
         except TelegramError:
@@ -400,6 +448,7 @@ async def relay_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             await rc.record_message(user_id, msg.message_id)
             await rc.record_message(partner_id, sent_msg.message_id)
             await rc.mark_own_message(user_id, msg.message_id)
+            await rc.increment_chat_msg_count(user_id, partner_id)
 
             # ذخیره‌ی متنِ پیام در Postgres (فقط برای امکانِ قضاوتِ AI در
             # صورت گزارش‌شدن). محتوای مدیا ذخیره نمی‌شه، فقط نوعش.

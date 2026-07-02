@@ -498,6 +498,30 @@ async def update_report_verdict(report_id: int, verdict: "ReportVerdict", verdic
             await session.commit()
 
 
+async def deduct_coins(user_id: int, amount: int, reason: str) -> int | None:
+    """سکه کسر می‌کنه. خروجی: موجودی جدید یا None اگه سکه کافی نباشه."""
+    async with async_session() as session:
+        user = await session.get(User, user_id)
+        if user is None or user.coins < amount:
+            return None
+        user.coins -= amount
+        session.add(CoinTransaction(user_id=user_id, amount=-amount, reason=reason))
+        await session.commit()
+        return user.coins
+
+
+async def refund_coins(user_id: int, amount: int, reason: str) -> int | None:
+    """سکه برمی‌گردونه. خروجی: موجودی جدید یا None اگه کاربر پیدا نشد."""
+    async with async_session() as session:
+        user = await session.get(User, user_id)
+        if user is None:
+            return None
+        user.coins += amount
+        session.add(CoinTransaction(user_id=user_id, amount=amount, reason=reason))
+        await session.commit()
+        return user.coins
+
+
 async def grant_report_reward(reporter_id: int, amount: int, report_id: int | None = None) -> int | None:
     """به گزارش‌دهنده‌ای که گزارشش توسط AI تاییدِ صحت شده، سکه پاداش
     می‌ده. خروجی: موجودیِ جدیدِ سکه (یا None اگه کاربر پیدا نشد)."""
