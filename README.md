@@ -88,7 +88,9 @@ bluechat/
 │   └── menu.py           # منوی اصلی
 ├── judge.py              # مدیریت محتوا با AI
 ├── moderation.py         # فیلتر محتوای نامناسب
-└── iran_cities.json      # لیست استان‌ها و شهرهای ایران
+├── iran_cities.json      # لیست استان‌ها و شهرهای ایران
+├── LICENSE               # All Rights Reserved
+└── requirements.txt      # وابستگی‌های Python
 ```
 
 ---
