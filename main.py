@@ -441,7 +441,7 @@ def main() -> None:
     app.add_handler(CommandHandler("help", menu.show_help))
     app.add_handler(CommandHandler("report", report.start_report))
     app.add_handler(CommandHandler("cancel", profile.cancel_profile_edit))
-    app.add_handler(CommandHandler("newmsg", anon_note.deliver_pending_notes))
+
     app.add_handler(CommandHandler("silent", public_profile.toggle_silent_mode))
     app.add_handler(CommandHandler("settings", settings.show_settings))
     app.add_handler(MessageHandler(filters.Regex(r"^/u(?:ser)?_\S+"), user_profile_command))

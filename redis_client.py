@@ -63,19 +63,13 @@ KEY_NOTE_SENDER = "melogap:note:{note_id}"           # note_id -> sender_id
 KEY_NOTE_MESSAGE = "melogap:note_msg:{note_id}"      # note_id -> "chat_id:message_id" پیام اصلی
 KEY_AWAITING_REPLY = "melogap:awaiting_reply:{owner_id}"  # owner_id -> note_id ای که منتظر پاسخشه
 
-# صف پیام‌های ناشناسی که هنوز به صاحب لینک تحویل داده نشدن (تا وقتی که
-# /newmsg رو بزنه). هر آیتم به‌صورت JSON شامل sender_id و آی‌دیِ پیامِ
-# اصلیِ فرستنده (که با copy_message موقع تحویل، برای صاحب لینک کپی
-# می‌شه) ذخیره می‌شه.
-KEY_PENDING_NOTES = "melogap:pending_notes:{owner_id}"  # لیست JSON پیام‌های در صف
-KEY_UNSEEN_NOTIFIED = "melogap:unseen_notified:{owner_id}"  # آیا پیام «📬 پیام جدید داری» فرستاده شده؟
 
 TTL_LAST_SEEN = 60 * 60 * 24 * 30   # ۳۰ روز نگه می‌داره آخرین زمان آنلاین
 TTL_MESSAGE_MAP = 60 * 60 * 24 * 2  # ۴۸ ساعت (هم‌راستا با محدودیت حذف پیام تلگرام)
 TTL_PENDING_DELETE = 60 * 60 * 6    # ۶ ساعت فرصت برای تایید حذف دوطرفه
 TTL_NOTE = 60 * 60 * 24 * 7         # یک هفته اعتبار برای پاسخ به یک پیام ناشناس
 TTL_AWAITING_REPLY = 60 * 60 * 6    # ۶ ساعت فرصت برای نوشتن متن پاسخ بعد از زدن دکمه
-TTL_PENDING_NOTES = 60 * 60 * 24 * 7  # یک هفته اعتبار برای صفِ پیام‌های تحویل‌داده‌نشده
+
 
 
 async def _user_gender_str(user_id: int) -> Optional[str]:
@@ -458,43 +452,6 @@ async def clear_awaiting_reply(owner_id: int) -> None:
     await r.delete(KEY_AWAITING_REPLY.format(owner_id=owner_id))
 
 
-async def push_pending_note(owner_id: int, sender_id: int, sender_chat_id: int, message_id: int) -> None:
-    """یه پیامِ ورودیِ ناشناس رو به صفِ «هنوز تحویل‌داده‌نشده»ی صاحب لینک
-    اضافه می‌کنه. sender_chat_id و message_id برای کپی‌کردنِ بعدیِ خودِ
-    پیام (با copy_message) لازمن — این‌طوری هر نوع محتوایی (متن، عکس،
-    ویس، ...) بدون نوشتن کد جدا برای هر نوع، قابل تحویله."""
-    item = json.dumps({"sender_id": sender_id, "chat_id": sender_chat_id, "message_id": message_id})
-    key = KEY_PENDING_NOTES.format(owner_id=owner_id)
-    await r.rpush(key, item)
-    await r.expire(key, TTL_PENDING_NOTES)
-
-
-async def pop_all_pending_notes(owner_id: int) -> list[dict]:
-    """همه‌ی پیام‌های در صفِ صاحب لینک رو برمی‌گردونه و صف رو خالی می‌کنه."""
-    key = KEY_PENDING_NOTES.format(owner_id=owner_id)
-    items = await r.lrange(key, 0, -1)
-    await r.delete(key)
-    return [json.loads(i) for i in items]
-
-
-async def count_pending_notes(owner_id: int) -> int:
-    key = KEY_PENDING_NOTES.format(owner_id=owner_id)
-    return await r.llen(key)
-
-
-async def mark_unseen_notified(owner_id: int) -> bool:
-    """اگه پیام «📬 پیام جدید داری» قبلاً برای این دور از پیام‌های
-    تحویل‌نشده فرستاده نشده باشه، True برمی‌گردونه (یعنی الان باید
-    فرستاده بشه) و پرچمش رو ست می‌کنه. اگه از قبل فرستاده شده بود
-    (یعنی صاحب لینک هنوز /newmsg نزده و پیام جدید دیگه‌ای اومده)،
-    False برمی‌گردونه تا نوتیف تکراری نفرستیم."""
-    key = KEY_UNSEEN_NOTIFIED.format(owner_id=owner_id)
-    was_set = await r.set(key, "1", nx=True, ex=TTL_PENDING_NOTES)
-    return bool(was_set)
-
-
-async def clear_unseen_notified(owner_id: int) -> None:
-    await r.delete(KEY_UNSEEN_NOTIFIED.format(owner_id=owner_id))
 
 
 # ---------------------------------------------------------------------------

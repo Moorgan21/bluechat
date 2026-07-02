@@ -1,31 +1,5 @@
 """
-پیام‌های ناشناسِ نوتیفی — لینک ناشناس مستقیم
-------------------------------------------------
-برخلاف چت اصلی (matching دوطرفه با ChatSession)، وقتی کسی از طریق
-لینک ناشناس اختصاصی (`?start=direct_<code>`) به صاحب لینک پیام می‌ده،
-هیچ سشن یا جفت‌شدنِ دائمی ایجاد نمی‌شه.
-
-جریان کار (نسخه‌ی صف‌دار + بلاک):
-    1. فرستنده از طریق لینک وارد ربات می‌شه و پیامش رو می‌نویسه. اگه
-       صاحب لینک قبلاً این فرستنده رو بلاک کرده باشه، پیام اصلاً وارد
-       صف نمی‌شه و فرستنده متوجه بلاک‌شدنش نمی‌شه (بی‌سروصدا رد می‌شه).
-    2. پیام مستقیم برای صاحب لینک ارسال نمی‌شه؛ به‌جاش توی یه صفِ
-       Redis («pending notes») قرار می‌گیره.
-    3. اگه این اولین پیامِ تحویل‌نشده باشه، صاحب لینک یه نوتیفِ کوتاه
-       می‌گیره: «📬 یه پیام ناشناس جدید داری! جهت دریافت کلیک کن 👇
-       /newmsg» — بدون محتوای واقعی پیام.
-    4. وقتی صاحب لینک /newmsg رو بزنه، تمام پیام‌های صفِ اون لحظه
-       (ممکنه از چند فرستنده‌ی مختلف باشن) با copy_message برای صاحب
-       لینک تحویل داده می‌شن، هر کدوم با دو دکمه زیرش:
-       «↩️ پاسخ دادن» و «🚫 بلاک کردن فرستنده».
-    5. به هر فرستنده‌ای که پیامش تحویل داده شد، اطلاع داده می‌شه:
-       «✅ پیامت رو دید.»
-    6. صاحب لینک روی «پاسخ دادن» می‌زنه → می‌نویسه → پاسخ مستقیم برای
-       همون فرستنده ارسال می‌شه، با دکمه‌های پاسخ/بلاکِ جدید زیرش تا
-       رفت‌وبرگشت ادامه پیدا کنه.
-    7. صاحب لینک روی «بلاک کردن فرستنده» می‌زنه → از این به بعد، هر
-       پیامی که همون فرستنده از طریق لینکِ این صاحب بفرسته، بی‌سروصدا
-       رد می‌شه (بدون اطلاع به فرستنده که بلاک شده).
+پیام‌های ناشناس — لینک ناشناس مستقیم
 """
 
 import logging
@@ -149,58 +123,6 @@ async def handle_view_note(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         pass
 
 
-async def deliver_pending_notes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """هندلر دستور /newmsg: تمام پیام‌های در صفِ صاحب لینک رو تحویل
-    می‌ده و به فرستنده‌های هرکدوم اطلاع می‌ده که پیامشون دیده شد.
-    پیام‌های فرستنده‌های بلاک‌شده (اگه بعد از ارسال و قبل از /newmsg
-    بلاک شده باشن) از صف حذف می‌شن و تحویل داده نمی‌شن."""
-    owner_id = update.effective_user.id
-    pending = await rc.pop_all_pending_notes(owner_id)
-    await rc.clear_unseen_notified(owner_id)
-
-    if not pending:
-        await update.message.reply_text("پیام ناشناسِ در انتظاری نداری.")
-        return
-
-    deliverable = []
-    for item in pending:
-        if await is_sender_blocked(owner_id, item["sender_id"]):
-            continue
-        deliverable.append(item)
-
-    if not deliverable:
-        await update.message.reply_text("پیام ناشناسِ در انتظاری نداری.")
-        return
-
-    await update.message.reply_text(f"📨 {len(deliverable)} پیام ناشناس جدید داری:")
-
-    delivered_sender_ids: set[int] = set()
-    for item in deliverable:
-        sender_id = item["sender_id"]
-        source_chat_id = item["chat_id"]
-        source_message_id = item["message_id"]
-
-        note_id = await rc.create_note(sender_id)
-        keyboard = note_reply_keyboard(note_id, sender_id)
-
-        try:
-            await context.bot.copy_message(
-                chat_id=owner_id,
-                from_chat_id=source_chat_id,
-                message_id=source_message_id,
-                reply_markup=keyboard,
-            )
-            delivered_sender_ids.add(sender_id)
-        except TelegramError:
-            logger.exception(
-                "خطا در تحویل پیامِ صف‌شده به owner_id=%s از sender_id=%s", owner_id, sender_id
-            )
-
-    for sender_id in delivered_sender_ids:
-        try:
-            await context.bot.send_message(sender_id, "✅ صاحب لینک پیامت رو دید.")
-        except TelegramError:
-            logger.warning("امکان اطلاع‌رسانیِ دیده‌شدن پیام به sender_id=%s وجود نداشت.", sender_id)
 
 
 async def handle_direct_msg_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
