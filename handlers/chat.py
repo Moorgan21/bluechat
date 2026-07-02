@@ -111,12 +111,11 @@ async def try_match(user_id: int, context: ContextTypes.DEFAULT_TYPE, desired_ge
 async def _unpin_queue_message(user_id: int, context: ContextTypes.DEFAULT_TYPE) -> None:
     """پیامِ پین‌شده‌ی صفِ این کاربر (اگه وجود داشته باشه) رو آنپین
     می‌کنه و job تایم‌اوتِ مربوطه رو لغو می‌کنه."""
-    message_id = await rc.pop_queue_pin_message(user_id)
-    if message_id is not None:
-        try:
-            await context.bot.unpin_chat_message(user_id, message_id)
-        except TelegramError:
-            pass
+    await rc.pop_queue_pin_message(user_id)
+    try:
+        await context.bot.unpin_all_chat_messages(user_id)
+    except TelegramError:
+        pass
 
     jobs = context.job_queue.get_jobs_by_name(f"queue_timeout_{user_id}")
     for job in jobs:
