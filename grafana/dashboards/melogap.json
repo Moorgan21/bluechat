@@ -181,17 +181,69 @@
       "fieldConfig": {"defaults": {"unit": "reqps", "custom": {"fillOpacity": 20, "lineWidth": 2}}, "overrides": [{"matcher": {"id": "byName", "options": "شروع‌شده"}, "properties": [{"id": "color", "value": {"fixedColor": "green", "mode": "fixed"}}]}, {"matcher": {"id": "byName", "options": "پایان‌یافته"}, "properties": [{"id": "color", "value": {"fixedColor": "red", "mode": "fixed"}}]}]}
     },
 
-    { "id": 104, "type": "row", "title": "🖥️ منابع سرور", "gridPos": {"x": 0, "y": 43, "w": 24, "h": 1}, "collapsed": false },
+    { "id": 106, "type": "row", "title": "🛡 آنتی اسپم", "gridPos": {"x": 0, "y": 43, "w": 24, "h": 1}, "collapsed": false },
+
+    {
+      "id": 200, "type": "stat", "title": "بلاک‌های اسپم (۲۴ ساعت)",
+      "description": "تعداد کل درخواست‌هایی که spam guard در ۲۴ ساعت اخیر مسدود کرده",
+      "gridPos": {"x": 0, "y": 44, "w": 6, "h": 5},
+      "targets": [{"expr": "increase(bot_spam_blocks_total[24h])", "legendFormat": "", "datasource": "Prometheus"}],
+      "options": {"colorMode": "background", "graphMode": "area", "textMode": "auto", "reduceOptions": {"calcs": ["lastNotNull"]}},
+      "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": 0}, {"color": "orange", "value": 50}, {"color": "red", "value": 200}]}, "noValue": "0"}}
+    },
+    {
+      "id": 201, "type": "stat", "title": "بلاک پیام (۱ ساعت)",
+      "description": "پیام‌های متنی/مدیای مسدودشده در یک ساعت اخیر",
+      "gridPos": {"x": 6, "y": 44, "w": 6, "h": 5},
+      "targets": [{"expr": "increase(bot_spam_blocks_total{kind=\"message\"}[1h])", "legendFormat": "", "datasource": "Prometheus"}],
+      "options": {"colorMode": "background", "graphMode": "area", "reduceOptions": {"calcs": ["lastNotNull"]}},
+      "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": 0}, {"color": "orange", "value": 20}, {"color": "red", "value": 100}]}, "noValue": "0"}}
+    },
+    {
+      "id": 202, "type": "stat", "title": "بلاک callback (۱ ساعت)",
+      "description": "callback‌ها و دستورات مسدودشده در یک ساعت اخیر",
+      "gridPos": {"x": 12, "y": 44, "w": 6, "h": 5},
+      "targets": [{"expr": "increase(bot_spam_blocks_total{kind=\"command\"}[1h])", "legendFormat": "", "datasource": "Prometheus"}],
+      "options": {"colorMode": "background", "graphMode": "area", "reduceOptions": {"calcs": ["lastNotNull"]}},
+      "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": 0}, {"color": "orange", "value": 10}, {"color": "red", "value": 50}]}, "noValue": "0"}}
+    },
+    {
+      "id": 203, "type": "stat", "title": "نرخ بلاک لحظه‌ای",
+      "description": "میانگین تعداد بلاک‌های spam guard در هر دقیقه (rolling 5m)",
+      "gridPos": {"x": 18, "y": 44, "w": 6, "h": 5},
+      "targets": [{"expr": "rate(bot_spam_blocks_total[5m]) * 60", "legendFormat": "", "datasource": "Prometheus"}],
+      "options": {"colorMode": "background", "graphMode": "area", "reduceOptions": {"calcs": ["lastNotNull"]}},
+      "fieldConfig": {"defaults": {"unit": "short", "decimals": 1, "color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": 0}, {"color": "orange", "value": 2}, {"color": "red", "value": 10}]}, "noValue": "0"}}
+    },
+    {
+      "id": 204, "type": "timeseries", "title": "نرخ حملات اسپم در طول زمان",
+      "description": "هر اسپایک در این نمودار نشان‌دهنده‌ی یک موج اسپم است",
+      "gridPos": {"x": 0, "y": 49, "w": 24, "h": 8},
+      "targets": [
+        {"expr": "rate(bot_spam_blocks_total{kind=\"message\"}[1m])", "legendFormat": "پیام مسدودشده", "datasource": "Prometheus"},
+        {"expr": "rate(bot_spam_blocks_total{kind=\"command\"}[1m])", "legendFormat": "callback مسدودشده", "datasource": "Prometheus"}
+      ],
+      "options": {"tooltip": {"mode": "multi"}, "legend": {"displayMode": "list", "placement": "bottom"}},
+      "fieldConfig": {
+        "defaults": {"unit": "reqps", "custom": {"fillOpacity": 20, "lineWidth": 2, "spanNulls": false}},
+        "overrides": [
+          {"matcher": {"id": "byName", "options": "پیام مسدودشده"}, "properties": [{"id": "color", "value": {"fixedColor": "red", "mode": "fixed"}}]},
+          {"matcher": {"id": "byName", "options": "callback مسدودشده"}, "properties": [{"id": "color", "value": {"fixedColor": "orange", "mode": "fixed"}}]}
+        ]
+      }
+    },
+
+    { "id": 104, "type": "row", "title": "🖥️ منابع سرور", "gridPos": {"x": 0, "y": 57, "w": 24, "h": 1}, "collapsed": false },
 
     {
       "id": 9, "type": "timeseries", "title": "CPU سرور",
-      "gridPos": {"x": 0, "y": 44, "w": 8, "h": 8},
+      "gridPos": {"x": 0, "y": 58, "w": 8, "h": 8},
       "targets": [{"expr": "100 - (avg by(instance)(irate(node_cpu_seconds_total{mode=\"idle\"}[1m])) * 100)", "legendFormat": "CPU %", "datasource": "Prometheus"}],
-      "fieldConfig": {"defaults": {"unit": "percent", "min": 0, "max": 100, "color": {"fixedColor": "orange", "mode": "fixed"}, "custom": {"fillOpacity": 20, "lineWidth": 2}, "thresholds": {"steps": [{"color": "green", "value": 0}, {"color": "red", "value": 85}]}, "custom": {"thresholdsStyle": {"mode": "line"}, "fillOpacity": 20, "lineWidth": 2}}}
+      "fieldConfig": {"defaults": {"unit": "percent", "min": 0, "max": 100, "color": {"fixedColor": "orange", "mode": "fixed"}, "custom": {"thresholdsStyle": {"mode": "line"}, "fillOpacity": 20, "lineWidth": 2}, "thresholds": {"steps": [{"color": "green", "value": 0}, {"color": "red", "value": 85}]}}}
     },
     {
       "id": 10, "type": "timeseries", "title": "RAM سرور",
-      "gridPos": {"x": 8, "y": 44, "w": 8, "h": 8},
+      "gridPos": {"x": 8, "y": 58, "w": 8, "h": 8},
       "targets": [
         {"expr": "node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes", "legendFormat": "استفاده‌شده", "datasource": "Prometheus"},
         {"expr": "node_memory_MemTotal_bytes", "legendFormat": "کل", "datasource": "Prometheus"}
@@ -200,22 +252,22 @@
     },
     {
       "id": 11, "type": "timeseries", "title": "Redis حافظه",
-      "gridPos": {"x": 16, "y": 44, "w": 8, "h": 8},
+      "gridPos": {"x": 16, "y": 58, "w": 8, "h": 8},
       "targets": [{"expr": "redis_memory_used_bytes", "legendFormat": "used", "datasource": "Prometheus"}],
       "fieldConfig": {"defaults": {"unit": "bytes", "color": {"fixedColor": "red", "mode": "fixed"}, "custom": {"fillOpacity": 20, "lineWidth": 2}}}
     },
 
-    { "id": 105, "type": "row", "title": "🗄️ دیتابیس", "gridPos": {"x": 0, "y": 52, "w": 24, "h": 1}, "collapsed": false },
+    { "id": 105, "type": "row", "title": "🗄️ دیتابیس", "gridPos": {"x": 0, "y": 66, "w": 24, "h": 1}, "collapsed": false },
 
     {
       "id": 12, "type": "timeseries", "title": "اتصالات فعال PostgreSQL",
-      "gridPos": {"x": 0, "y": 53, "w": 12, "h": 8},
+      "gridPos": {"x": 0, "y": 67, "w": 12, "h": 8},
       "targets": [{"expr": "pg_stat_activity_count", "legendFormat": "connections", "datasource": "Prometheus"}],
       "fieldConfig": {"defaults": {"color": {"fixedColor": "blue", "mode": "fixed"}, "custom": {"fillOpacity": 20, "lineWidth": 2}}}
     },
     {
       "id": 27, "type": "timeseries", "title": "Redis — دستورات در ثانیه",
-      "gridPos": {"x": 12, "y": 53, "w": 12, "h": 8},
+      "gridPos": {"x": 12, "y": 67, "w": 12, "h": 8},
       "targets": [{"expr": "rate(redis_commands_processed_total[1m])", "legendFormat": "cmd/s", "datasource": "Prometheus"}],
       "fieldConfig": {"defaults": {"unit": "reqps", "color": {"fixedColor": "red", "mode": "fixed"}, "custom": {"fillOpacity": 20, "lineWidth": 2}}}
     }
