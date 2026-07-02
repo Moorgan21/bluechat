@@ -21,8 +21,11 @@
 جریانِ درخواستِ چت:
     ۱. A روی «💬 درخواست چت» زیرِ پروفایلِ B می‌زنه.
     ۲. B فقط یه نوتیفِ کوتاه می‌گیره: «🔔 درخواست چت از طرف /user_<code_A>»
-       با دکمه‌ی «👀 مشاهده درخواست چت» (بدونِ جزئیاتِ بیشتر).
-    ۳. B روی مشاهده می‌زنه → پیام با دکمه‌های «✅ قبول» / «❌ رد» باز می‌شه.
+       با دکمه‌ی «👀 مشاهده درخواست چت» (بدونِ جزئیاتِ بیشتر — پروفایلِ A
+       توی همین نوتیفِ اول نمایش داده نمی‌شه).
+    ۳. B روی مشاهده می‌زنه → پروفایلِ کاملِ A (عکس/بیو/سن/...) به‌همراه
+       دکمه‌های «✅ قبول» / «❌ رد» نشون داده می‌شه، و همزمان به A اطلاع
+       داده می‌شه که «👀 کاربر درخواستِ چتت رو دید.»
     ۴. اگه B قبول کنه: به‌شرطی که هیچ‌کدوم از دو طرف چتِ فعال نداشته
        باشن، یه چتِ کاملِ دوطرفه (مثلِ matching عادی) باز می‌شه.
     ۵. اگه B رد کنه: به A پیام می‌ره که درخواستش رد شد.
@@ -82,21 +85,11 @@ AWAITING_NEW_TAG_KEY = "awaiting_new_reaction_tag"
 # ---------------------------------------------------------------------------
 # نمایشِ پروفایلِ عمومی با /user_<code>
 # ---------------------------------------------------------------------------
-async def show_public_profile_by_code(update: Update, context: ContextTypes.DEFAULT_TYPE, code: str) -> None:
+async def _build_public_profile_text(code: str, target) -> str:
+    """متنِ HTML-escape‌شده‌ی پروفایلِ عمومی رو می‌سازه؛ بینِ نمایشِ
+    /user_<code> و نمایشِ پروفایل هنگامِ «مشاهده‌ی درخواستِ چت» مشترکه."""
     from handlers.profile import GENDER_LABELS
 
-    viewer_id = update.effective_user.id
-    target = await get_user_by_referral_code(code)
-
-    if target is None:
-        await update.message.reply_text("همچین کاربری پیدا نشد. لینک/شناسه رو دوباره چک کن.")
-        return
-
-    if target.id == viewer_id:
-        await update.message.reply_text("این پروفایلِ خودته 🙂 از منوی «👤 پروفایل» می‌تونی ببینیش.")
-        return
-
-    import redis_client as rc
     last_seen_ts = await rc.get_last_seen(target.id)
     last_seen_text = rc.format_last_seen(last_seen_ts)
     location_line = ""
@@ -122,6 +115,22 @@ async def show_public_profile_by_code(update: Update, context: ContextTypes.DEFA
             for c in counts[:10]
         )
 
+    return text
+
+
+async def show_public_profile_by_code(update: Update, context: ContextTypes.DEFAULT_TYPE, code: str) -> None:
+    viewer_id = update.effective_user.id
+    target = await get_user_by_referral_code(code)
+
+    if target is None:
+        await update.message.reply_text("همچین کاربری پیدا نشد. لینک/شناسه رو دوباره چک کن.")
+        return
+
+    if target.id == viewer_id:
+        await update.message.reply_text("این پروفایلِ خودته 🙂 از منوی «👤 پروفایل» می‌تونی ببینیش.")
+        return
+
+    text = await _build_public_profile_text(code, target)
     keyboard = public_profile_keyboard(target.id, target.reactions_enabled)
 
     if target.photo_file_id:
@@ -224,8 +233,9 @@ async def async_session_get_user(user_id: int):
 
 
 async def handle_view_chat_request(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """هندلر دکمه‌ی «👀 مشاهده درخواست چت» — پیامِ کامل با دکمه‌های
-    قبول/رد رو نشون می‌ده."""
+    """هندلر دکمه‌ی «👀 مشاهده درخواست چت» — پروفایلِ کاملِ درخواست‌کننده
+    رو (عکس/بیو/سن و ...) به‌همراه دکمه‌های قبول/رد نشون می‌ده، و به
+    درخواست‌کننده هم اطلاع می‌ده که درخواستش دیده شده."""
     query = update.callback_query
     await query.answer()
 
@@ -237,12 +247,34 @@ async def handle_view_chat_request(update: Update, context: ContextTypes.DEFAULT
         return
 
     requester = await async_session_get_user(requester_id)
-    requester_code = requester.referral_code if requester else "نامشخص"
+    if requester is None:
+        await query.edit_message_text("⚠️ این کاربر دیگه در دسترس نیست.")
+        return
 
-    await query.edit_message_text(
-        f"🔔 درخواست چت از طرف /user_{requester_code}",
-        reply_markup=chat_request_decision_keyboard(request_id),
-    )
+    requester_code = requester.referral_code or "نامشخص"
+    text = await _build_public_profile_text(requester_code, requester)
+    keyboard = chat_request_decision_keyboard(request_id)
+
+    await query.edit_message_text(f"🔔 درخواست چت از طرف /user_{requester_code}\n\n👇 پروفایلش رو ببین و تصمیم بگیر:")
+
+    chat_id = query.message.chat_id
+    if requester.photo_file_id:
+        try:
+            await context.bot.send_photo(
+                chat_id, requester.photo_file_id, caption=text,
+                reply_markup=keyboard, parse_mode="HTML",
+            )
+        except TelegramError:
+            from db import clear_photo_file_id
+            await clear_photo_file_id(requester.id)
+            await context.bot.send_message(chat_id, text, reply_markup=keyboard, parse_mode="HTML")
+    else:
+        await context.bot.send_message(chat_id, text, reply_markup=keyboard, parse_mode="HTML")
+
+    try:
+        await context.bot.send_message(requester_id, "👀 کاربر درخواستِ چتت رو دید.")
+    except TelegramError:
+        pass
 
 
 async def handle_chat_request_accept(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
