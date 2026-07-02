@@ -7,7 +7,7 @@
 ![Architecture](https://img.shields.io/badge/architecture-Async--Worker-orange)
 ![Monitoring](https://img.shields.io/badge/monitoring-Prometheus%20%26%20Grafana-green?logo=grafana&logoColor=white)
 
-ربات تلگرام برای گفتگوی ناشناس — کاربران به صورت تصادفی یا هدفمند به هم وصل می‌شن و بدون افشای هویت چت می‌کنن. هیچ اطلاعات شخصی‌ای بین طرفین رد و بدل نمی‌شه و هویت واقعی کاربران در هیچ مرحله‌ای فاش نمی‌شه.
+ربات تلگرام برای گفتگوی ناشناس — کاربران به صورت تصادفی یا هدفمند به هم وصل می‌شن و چت می کنند.
 
 > **نمونه اجرا شده:** [@Blluchatbot](https://t.me/Blluchatbot)
 
