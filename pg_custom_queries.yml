@@ -71,3 +71,42 @@ pg_users_total:
     - new_week:
         usage: GAUGE
         description: New users in last 7 days
+
+pg_warnings:
+  query: |
+    SELECT COUNT(*) AS total
+    FROM warnings
+  metrics:
+    - total:
+        usage: GAUGE
+        description: Total warnings issued by DeepSeek AI judge
+
+pg_banned_users:
+  query: |
+    SELECT COUNT(*) AS total,
+           COUNT(*) FILTER (WHERE id IN (
+               SELECT DISTINCT user_id FROM warnings WHERE warning_number >= 5
+           )) AS by_deepseek
+    FROM users
+    WHERE is_banned = true
+  metrics:
+    - total:
+        usage: GAUGE
+        description: Total banned users
+    - by_deepseek:
+        usage: GAUGE
+        description: Users auto-banned by DeepSeek (5+ warnings)
+
+pg_gemini_bans:
+  query: |
+    SELECT COUNT(*) AS profile_report_guilty,
+           COUNT(DISTINCT reported_id) AS unique_users_banned
+    FROM profile_reports
+    WHERE verdict = 'guilty'
+  metrics:
+    - profile_report_guilty:
+        usage: GAUGE
+        description: Guilty verdicts by Gemini on profile reports
+    - unique_users_banned:
+        usage: GAUGE
+        description: Unique users banned via Gemini profile reports

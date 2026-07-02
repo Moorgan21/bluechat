@@ -75,14 +75,49 @@
       "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "thresholds": {"steps": [{"color": "yellow", "value": 0}]}}}
     },
     {
+      "id": 21, "type": "stat", "title": "اخطارهای DeepSeek",
+      "gridPos": {"x": 16, "y": 4, "w": 4, "h": 4},
+      "targets": [{"expr": "pg_warnings_total", "datasource": "Prometheus"}],
+      "options": {"colorMode": "background"},
+      "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "thresholds": {"steps": [{"color": "orange", "value": 0}]}}}
+    },
+    {
+      "id": 22, "type": "stat", "title": "کل کاربران بن‌شده",
+      "gridPos": {"x": 20, "y": 4, "w": 4, "h": 4},
+      "targets": [{"expr": "pg_banned_users_total", "datasource": "Prometheus"}],
+      "options": {"colorMode": "background"},
+      "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "thresholds": {"steps": [{"color": "red", "value": 0}]}}}
+    },
+    {
+      "id": 23, "type": "stat", "title": "بن توسط DeepSeek (۵+ اخطار)",
+      "gridPos": {"x": 0, "y": 8, "w": 4, "h": 4},
+      "targets": [{"expr": "pg_banned_users_by_deepseek", "datasource": "Prometheus"}],
+      "options": {"colorMode": "background"},
+      "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "thresholds": {"steps": [{"color": "orange", "value": 0}]}}}
+    },
+    {
+      "id": 24, "type": "stat", "title": "بن توسط Gemini (گزارش پروفایل)",
+      "gridPos": {"x": 4, "y": 8, "w": 4, "h": 4},
+      "targets": [{"expr": "pg_gemini_bans_unique_users_banned", "datasource": "Prometheus"}],
+      "options": {"colorMode": "background"},
+      "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "thresholds": {"steps": [{"color": "purple", "value": 0}]}}}
+    },
+    {
+      "id": 25, "type": "stat", "title": "حکم guilty توسط Gemini",
+      "gridPos": {"x": 8, "y": 8, "w": 4, "h": 4},
+      "targets": [{"expr": "pg_gemini_bans_profile_report_guilty", "datasource": "Prometheus"}],
+      "options": {"colorMode": "background"},
+      "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "thresholds": {"steps": [{"color": "purple", "value": 0}]}}}
+    },
+    {
       "id": 7, "type": "timeseries", "title": "پیام‌های relay شده در ثانیه",
-      "gridPos": {"x": 0, "y": 8, "w": 12, "h": 8},
+      "gridPos": {"x": 0, "y": 12, "w": 12, "h": 8},
       "targets": [{"expr": "rate(bot_messages_relayed_total[1m])", "legendFormat": "msg/s", "datasource": "Prometheus"}],
       "fieldConfig": {"defaults": {"unit": "reqps", "color": {"mode": "palette-classic"}}}
     },
     {
       "id": 8, "type": "timeseries", "title": "چت شروع‌شده / پایان‌یافته",
-      "gridPos": {"x": 12, "y": 8, "w": 12, "h": 8},
+      "gridPos": {"x": 12, "y": 12, "w": 12, "h": 8},
       "targets": [
         {"expr": "rate(bot_chats_started_total[5m])", "legendFormat": "شروع‌شده", "datasource": "Prometheus"},
         {"expr": "rate(bot_chats_ended_total[5m])", "legendFormat": "پایان‌یافته", "datasource": "Prometheus"}
