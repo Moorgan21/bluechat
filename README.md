@@ -310,5 +310,7 @@ bluechat/
 
 ## 📜 لایسنس
 
-Copyright © 2026 Blue Chat. تمام حقوق محفوظ است.  
-کپی، توزیع یا استفاده از این نرم‌افزار بدون اجازه‌ی کتبی ممنوع است.
+Copyright (C) 2026 Dariush Lashani
+
+این پروژه تحت مجوز **GNU Affero General Public License v3.0** منتشر شده.  
+برای جزئیات کامل فایل [LICENSE](LICENSE) را ببینید یا به [gnu.org/licenses/agpl-3.0](https://www.gnu.org/licenses/agpl-3.0) مراجعه کنید.
