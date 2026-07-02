@@ -355,7 +355,10 @@ https://your-domain.com/grafana/
 ```
 bluechat/
 ├── main.py               # نقطه‌ی ورود و routing اصلی
-├── db.py                 # مدل‌های دیتابیس و توابع
+├── db/                    # لایه‌ی دیتابیس (پکیج)
+│   ├── connections.py     # engine/session/Base و init_db()
+│   ├── models.py          # enumها و کلاس‌های ORM (جدول‌ها)
+│   └── queries.py         # توابعِ async روی مدل‌ها (کوین، گزارش، واکنش و...)
 ├── redis_client.py       # تمام عملیات Redis
 ├── keyboards.py          # کیبوردهای inline و reply
 ├── metrics.py            # متریک‌های Prometheus (counters و gauges)
@@ -363,7 +366,11 @@ bluechat/
 ├── spam_guard.py         # آنتی‌اسپم — sliding window rate limiter با Redis
 ├── schema.sql            # ساختار کامل دیتابیس (از صفر)
 ├── handlers/
-│   ├── chat.py           # منطق چت ناشناس و matching
+│   ├── chat/              # منطق چت ناشناس (پکیج)
+│   │   ├── matching.py     # انتخاب جنسیت، صف‌بندی، matching، timeout صف
+│   │   ├── session.py      # پایانِ چت (/stop, /next)، تاییدِ پایان، ثبتِ سشن
+│   │   ├── relay.py        # انتقالِ پیام/ویرایش/ریکشن
+│   │   └── extras.py       # پروفایلِ طرفِ مقابل، چتِ امن، پاک‌سازیِ تاریخچه
 │   ├── profile.py        # پروفایل و onboarding
 │   ├── public_profile.py # پروفایل عمومی و درخواست چت
 │   ├── anon_note.py      # پیام‌های ناشناس و دایرکت
@@ -378,6 +385,7 @@ bluechat/
 ├── gemini_limiter.py     # rate limiter برای Gemini API (token bucket)
 ├── worker.py             # AI worker — پردازش صف قضاوت در پروسه‌ی جداگانه
 ├── verdict_notify.py     # اطلاع‌رسانی نتیجه‌ی قضاوت (مشترک بین bot و worker)
+├── tests/                 # تست‌های واحد (pytest، روی دیتابیس/Redis ایزوله‌ی تستی)
 ├── prometheus.yml        # تنظیمات scrape برای Prometheus
 ├── pg_custom_queries.yml # کوئری‌های سفارشی postgres-exporter
 ├── grafana/
@@ -388,7 +396,8 @@ bluechat/
 │       └── bluechat.json # داشبورد پیش‌فرض Blue Chat Bot
 ├── iran_cities.json      # لیست ۳۱ استان و تمام شهرهای ایران
 ├── LICENSE               # GNU Affero General Public License v3 (AGPL-3.0)
-└── requirements.txt      # وابستگی‌های Python
+├── requirements.txt      # وابستگی‌های Python (پروداکشن)
+└── requirements-dev.txt  # وابستگی‌های اضافیِ تست (pytest)
 ```
 
 ---
