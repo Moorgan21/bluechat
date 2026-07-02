@@ -20,9 +20,9 @@
 
 جریانِ درخواستِ چت:
     ۱. A روی «💬 درخواست چت» زیرِ پروفایلِ B می‌زنه.
-    ۲. B فقط یه نوتیفِ کوتاه می‌گیره: «🔔 درخواست چت از طرف /user_<code_A>»
-       با دکمه‌ی «👀 مشاهده درخواست چت» (بدونِ جزئیاتِ بیشتر — پروفایلِ A
-       توی همین نوتیفِ اول نمایش داده نمی‌شه).
+    ۲. B فقط یه نوتیفِ کوتاه می‌گیره: «🔔 یه درخواستِ چت داری...» با دکمه‌ی
+       «👀 مشاهده درخواست چت» (بدونِ کد یا جزئیاتِ دیگه‌ای از A — هویتِ A
+       توی همین نوتیفِ اول اصلاً افشا نمی‌شه).
     ۳. B روی مشاهده می‌زنه → پروفایلِ کاملِ A (عکس/بیو/سن/...) به‌همراه
        دکمه‌های «✅ قبول» / «❌ رد» نشون داده می‌شه، و همزمان به A اطلاع
        داده می‌شه که «👀 کاربر درخواستِ چتت رو دید.»
@@ -208,9 +208,6 @@ async def handle_chat_request_button(update: Update, context: ContextTypes.DEFAU
         )
         return
 
-    requester = await async_session_get_user(requester_id)
-    requester_code = requester.referral_code if requester else "نامشخص"
-
     request_id = await rc.create_chat_request(requester_id)
 
     await query.message.reply_text("✅ درخواستِ چتت ارسال شد.")
@@ -218,7 +215,7 @@ async def handle_chat_request_button(update: Update, context: ContextTypes.DEFAU
     try:
         await context.bot.send_message(
             target_id,
-            f"🔔 درخواست چت از طرف /user_{requester_code}",
+            "🔔 یه درخواستِ چت داری. برای مشاهده روی دکمه‌ی زیر بزن:",
             reply_markup=view_chat_request_keyboard(request_id),
         )
     except TelegramError:
