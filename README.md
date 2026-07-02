@@ -163,6 +163,7 @@ https://your-domain.com/grafana/
 | `bot_chats_started_total` | Counter | کل چت‌های شروع‌شده |
 | `bot_chats_ended_total` | Counter | کل چت‌های پایان‌یافته |
 | `bot_ai_jobs_processed_total` | Counter | کل جاب‌های AI پردازش‌شده |
+| `bot_spam_blocks_total` | Counter | درخواست‌های مسدودشده توسط spam guard (label: `kind`) |
 
 ### متریک‌های دیتابیس (custom queries)
 
@@ -183,7 +184,7 @@ https://your-domain.com/grafana/
 
 ### داشبورد پیش‌فرض
 
-داشبورد **Blue Chat Bot** به‌صورت خودکار هنگام راه‌اندازی بارگذاری می‌شه و در ۵ بخش سازمان‌یافته:
+داشبورد **Blue Chat Bot** به‌صورت خودکار هنگام راه‌اندازی بارگذاری می‌شه و در ۶ بخش سازمان‌یافته:
 
 | بخش | محتوا |
 |-----|-------|
@@ -191,6 +192,7 @@ https://your-domain.com/grafana/
 | 👥 آمار کاربران | کل/جدید کاربران، سکه‌ها، توزیع جنسیت، جدول شهر/استان |
 | 🤖 هوش مصنوعی | اخطارهای DeepSeek، بن‌های Gemini، جاب‌های AI |
 | 📈 ترافیک | نرخ پیام relay، چت شروع/پایان |
+| 🛡 آنتی اسپم | بلاک‌های ۲۴ ساعت، نرخ لحظه‌ای، timeseries موج حملات |
 | 🖥️ زیرساخت | CPU، RAM، Redis، اتصالات PostgreSQL |
 
 ---
