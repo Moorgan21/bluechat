@@ -101,7 +101,7 @@ async def show_public_profile_by_code(update: Update, context: ContextTypes.DEFA
 
     counts = await get_reaction_counts(target.id)
     if counts:
-        text += "\n\n😠 واکنش‌های دریافتی:\n"
+        text += "\n\n😠 واکنش‌های دریافتی:\n\n"
         text += "\n".join(
             f"<blockquote>‏#{html.escape(c['label'])}: {_to_fa(c['count'])}</blockquote>"
             for c in counts[:10]
