@@ -166,7 +166,6 @@ async def run_search(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     if matched_id is not None:
         await rc.dequeue(user_id)
         await rc.set_partner(user_id, matched_id)
-        await rc.add_recent_partners(user_id, matched_id)
         await query.edit_message_text("✅ یک کاربر منطبق با فیلترهات پیدا شد! گفتگو شروع شد.")
         from db import ChatSession, increment_total_chats
         from keyboards import in_chat_reply_keyboard

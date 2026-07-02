@@ -253,7 +253,6 @@ async def handle_chat_request_accept(update: Update, context: ContextTypes.DEFAU
     await rc.dequeue(acceptor_id)
     await rc.dequeue(requester_id)
     await rc.set_partner(acceptor_id, requester_id)
-    await rc.add_recent_partners(acceptor_id, requester_id)
 
     async with async_session() as session:
         chat_session = ChatSession(user_a_id=acceptor_id, user_b_id=requester_id)

@@ -4,6 +4,7 @@
 ریکشن، پایان چت و پاک‌کردن تاریخچه‌ی دوطرفه.
 """
 
+import asyncio
 import logging
 import os
 import time
@@ -57,31 +58,36 @@ async def try_match(user_id: int, context: ContextTypes.DEFAULT_TYPE, desired_ge
             )
             return False
 
-        sent = await context.bot.send_message(
-            user_id,
-            "⏳ شما در صف هستید...\nبه محض پیدا شدن یک همراه، بهت خبر می‌دم.",
-            reply_markup=cancel_queue_keyboard(),
-        )
-        try:
-            await context.bot.pin_chat_message(user_id, sent.message_id, disable_notification=True)
-            await rc.set_queue_pin_message(user_id, sent.message_id)
-        except TelegramError:
-            logger.warning("امکان پین‌کردن پیامِ صف برای user_id=%s وجود نداشت.", user_id)
+        # یه لحظه صبر کن — شاید کاربر دیگه‌ای همزمان وارد صف شده باشه
+        await asyncio.sleep(0.8)
+        partner_id = await rc.pop_matching_waiting(user_id, desired_gender)
+        if partner_id is not None:
+            await rc.dequeue(user_id)
+        else:
+            sent = await context.bot.send_message(
+                user_id,
+                "⏳ شما در صف هستید...\nبه محض پیدا شدن یک همراه، بهت خبر می‌دم.",
+                reply_markup=cancel_queue_keyboard(),
+            )
+            try:
+                await context.bot.pin_chat_message(user_id, sent.message_id, disable_notification=True)
+                await rc.set_queue_pin_message(user_id, sent.message_id)
+            except TelegramError:
+                logger.warning("امکان پین‌کردن پیامِ صف برای user_id=%s وجود نداشت.", user_id)
 
-        context.job_queue.run_once(
-            _queue_timeout_job,
-            when=rc.QUEUE_TIMEOUT_SECONDS,
-            data={"user_id": user_id},
-            name=f"queue_timeout_{user_id}",
-        )
-        return False
+            context.job_queue.run_once(
+                _queue_timeout_job,
+                when=rc.QUEUE_TIMEOUT_SECONDS,
+                data={"user_id": user_id},
+                name=f"queue_timeout_{user_id}",
+            )
+            return False
 
     await rc.dequeue(user_id)
     await _unpin_queue_message(user_id, context)
     await _unpin_queue_message(partner_id, context)
 
     await rc.set_partner(user_id, partner_id)
-    await rc.add_recent_partners(user_id, partner_id)
 
     async with async_session() as session:
         chat_session = ChatSession(user_a_id=user_id, user_b_id=partner_id)
@@ -175,6 +181,16 @@ async def start_chat(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 
     if saved_pref is not None:
         desired_gender = None if saved_pref == "any" else saved_pref
+        if desired_gender is not None:
+            new_balance = await deduct_coins(user_id, rc.CHAT_COIN_COST, "gender_search")
+            if new_balance is None:
+                await update.effective_message.reply_text(
+                    f"🪙 سکه‌ی کافی نداری!\n"
+                    f"جستجو با فیلتر جنسیت {rc.CHAT_COIN_COST} سکه هزینه داره.\n"
+                    "برای جستجوی رایگان «فرقی نمی‌کنه» رو از /settings انتخاب کن."
+                )
+                return
+            await rc.set_chat_payer(user_id)
         await update.effective_message.reply_text("👋 در حال جستجوی یه همراه برات هستم...")
         await try_match(user_id, context, desired_gender)
     else:
@@ -356,6 +372,16 @@ async def next_chat(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     if saved_pref is not None:
         desired_gender = None if saved_pref == "any" else saved_pref
+        if desired_gender is not None:
+            new_balance = await deduct_coins(user_id, rc.CHAT_COIN_COST, "gender_search")
+            if new_balance is None:
+                await update.effective_message.reply_text(
+                    f"🪙 سکه‌ی کافی نداری!\n"
+                    f"جستجو با فیلتر جنسیت {rc.CHAT_COIN_COST} سکه هزینه داره.\n"
+                    "برای جستجوی رایگان «فرقی نمی‌کنه» رو از /settings انتخاب کن."
+                )
+                return
+            await rc.set_chat_payer(user_id)
         await update.effective_message.reply_text("👋 در حال جستجوی یه همراه برات هستم...")
         await try_match(user_id, context, desired_gender)
     else:
