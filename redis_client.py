@@ -161,27 +161,22 @@ async def get_chat_msg_count(user_a: int, user_b: int) -> int:
 async def pop_matching_waiting(user_id: int, desired_gender: Optional[str]) -> Optional[int]:
     own_gender = await _user_gender_str(user_id)
     search_genders = [desired_gender] if desired_gender else list(PARTNER_GENDERS)
-    print(f"[MATCH] user={user_id} own={own_gender} desired={desired_gender} search_in={search_genders}", flush=True)
 
     candidates: list[int] = []
     for gender in search_genders:
         members = await r.zrange(KEY_WAITING_QUEUE_BY_GENDER.format(gender=gender), 0, -1)
         candidates.extend(int(m) for m in members if int(m) != user_id)
 
-    print(f"[MATCH] user={user_id} candidates={candidates}", flush=True)
     if not candidates:
         return None
 
     random.shuffle(candidates)
     for candidate_id in candidates:
         candidate_desired = await get_desired_gender(candidate_id)
-        print(f"[MATCH] check candidate={candidate_id} c_desired={candidate_desired} own={own_gender} ok={candidate_desired is None or candidate_desired == own_gender}", flush=True)
         if candidate_desired is None or candidate_desired == own_gender:
             if await dequeue(candidate_id):
-                print(f"[MATCH] SUCCESS user={user_id} partner={candidate_id}", flush=True)
                 return candidate_id
 
-    print(f"[MATCH] FAIL user={user_id} no compatible found", flush=True)
     return None
 
 
