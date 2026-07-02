@@ -148,13 +148,34 @@ https://your-domain.com/grafana/
 | `bot_chats_ended_total` | Counter | کل چت‌های پایان‌یافته |
 | `bot_ai_jobs_processed_total` | Counter | کل جاب‌های AI پردازش‌شده |
 
+### متریک‌های دیتابیس (custom queries)
+
+| متریک | توضیح |
+|-------|-------|
+| `pg_users_total_count` | کل کاربران ثبت‌شده |
+| `pg_users_total_new_today` | کاربران جدید ۲۴ ساعت اخیر |
+| `pg_users_total_new_week` | کاربران جدید هفته اخیر |
+| `pg_users_by_gender_count` | تعداد کاربر به تفکیک جنسیت |
+| `pg_users_by_province_count` | تعداد کاربر به تفکیک استان |
+| `pg_users_by_city_count` | تعداد کاربر به تفکیک شهر |
+| `pg_total_coins_total` | مجموع سکه‌های همه کاربران |
+| `pg_warnings_total` | کل اخطارهای صادرشده توسط DeepSeek |
+| `pg_banned_users_total` | کل کاربران بن‌شده |
+| `pg_banned_users_by_deepseek` | بن‌شده‌های خودکار توسط DeepSeek (۵+ اخطار) |
+| `pg_gemini_bans_unique_users_banned` | کاربران یونیک بن‌شده توسط Gemini |
+| `pg_gemini_bans_profile_report_guilty` | کل احکام guilty توسط Gemini |
+
 ### داشبورد پیش‌فرض
 
-داشبورد **Blue Chat Bot** به‌صورت خودکار هنگام راه‌اندازی بارگذاری می‌شه و شامل:
-- وضعیت لحظه‌ای (چت فعال، صف انتظار، صف AI)
-- منابع سرور (CPU، RAM، دیسک)
-- نرخ پیام relay شده در ثانیه
-- اتصالات PostgreSQL و حافظه Redis
+داشبورد **Blue Chat Bot** به‌صورت خودکار هنگام راه‌اندازی بارگذاری می‌شه و در ۵ بخش سازمان‌یافته:
+
+| بخش | محتوا |
+|-----|-------|
+| ⚡ وضعیت لحظه‌ای | چت فعال، صف انتظار، صف AI، CPU/RAM/دیسک (Gauge) |
+| 👥 آمار کاربران | کل/جدید کاربران، سکه‌ها، توزیع جنسیت، جدول شهر/استان |
+| 🤖 هوش مصنوعی | اخطارهای DeepSeek، بن‌های Gemini، جاب‌های AI |
+| 📈 ترافیک | نرخ پیام relay، چت شروع/پایان |
+| 🖥️ زیرساخت | CPU، RAM، Redis، اتصالات PostgreSQL |
 
 ---
 
