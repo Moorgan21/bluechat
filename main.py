@@ -186,7 +186,10 @@ async def text_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     user_id = update.effective_user.id
     await rc.update_last_seen(user_id)
 
-    if not await spam_guard.check_message(user_id):
+    _spam = await spam_guard.check_message(user_id)
+    if _spam == spam_guard.SpamResult.ALREADY_BLOCKED:
+        return  # silent drop — هیچ ریپلایی نمی‌فرستیم
+    if _spam == spam_guard.SpamResult.JUST_BLOCKED:
         secs = await spam_guard.remaining_block(user_id)
         await update.message.reply_text(f"⚠️ خیلی سریع پیام می‌فرستی! {secs} ثانیه صبر کن.")
         return
@@ -270,7 +273,10 @@ async def media_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     user_id = update.effective_user.id
     await rc.update_last_seen(user_id)
 
-    if not await spam_guard.check_message(user_id):
+    _spam = await spam_guard.check_message(user_id)
+    if _spam == spam_guard.SpamResult.ALREADY_BLOCKED:
+        return
+    if _spam == spam_guard.SpamResult.JUST_BLOCKED:
         secs = await spam_guard.remaining_block(user_id)
         await update.message.reply_text(f"⚠️ خیلی سریع پیام می‌فرستی! {secs} ثانیه صبر کن.")
         return
@@ -309,7 +315,11 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     data = update.callback_query.data or ""
     if update.effective_user:
         await rc.update_last_seen(update.effective_user.id)
-        if not await spam_guard.check_command(update.effective_user.id):
+        _spam = await spam_guard.check_command(update.effective_user.id)
+        if _spam == spam_guard.SpamResult.ALREADY_BLOCKED:
+            await update.callback_query.answer()  # فقط loading رو برمی‌داره، پیامی نمی‌ده
+            return
+        if _spam == spam_guard.SpamResult.JUST_BLOCKED:
             secs = await spam_guard.remaining_block(update.effective_user.id)
             await update.callback_query.answer(f"⚠️ خیلی سریع! {secs} ثانیه صبر کن.", show_alert=True)
             return
