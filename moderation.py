@@ -31,6 +31,8 @@ import os
 from google import genai
 from google.genai import types
 
+from gemini_limiter import gemini_limiter
+
 logger = logging.getLogger(__name__)
 
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
@@ -79,6 +81,7 @@ async def check_image_safety(image_bytes: bytes, mime_type: str = "image/jpeg") 
     """عکس رو به Gemini Vision می‌فرسته و نتیجه‌ی ایمن/نامناسب‌بودن رو برمی‌گردونه.
     در صورت هر خطایی، fail-closed عمل می‌کنه (یعنی عکس را نامناسب فرض می‌کنه)."""
     try:
+        await gemini_limiter.acquire()
         client = _get_client()
         response = await client.aio.models.generate_content(
             model=GEMINI_MODEL,

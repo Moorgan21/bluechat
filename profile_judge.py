@@ -29,6 +29,7 @@ import os
 from google import genai
 from google.genai import types
 
+from gemini_limiter import gemini_limiter
 from db import (
     ProfileReport,
     ReportVerdict,
@@ -102,6 +103,7 @@ async def _run_gemini_profile_judge(
         contents.insert(0, types.Part.from_bytes(data=image_bytes, mime_type="image/jpeg"))
 
     try:
+        await gemini_limiter.acquire()
         client = _get_client()
         response = await client.aio.models.generate_content(
             model=GEMINI_MODEL,

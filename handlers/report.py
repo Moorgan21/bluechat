@@ -12,6 +12,7 @@
       قضاوتی ممکن نیست و هیچ‌کس اخطار نمی‌گیره.
 """
 
+import asyncio
 import logging
 
 from telegram import Update
@@ -93,6 +94,10 @@ async def report_reason_callback(update: Update, context: ContextTypes.DEFAULT_T
         "✅ گزارش شما ثبت شد و در حال بررسی توسطِ سیستمِ قضاوتِ ماست... ⏳"
     )
 
+    asyncio.create_task(_run_judge_bg(context, report_id, session_id, reporter_id, reported_id, reason_code))
+
+
+async def _run_judge_bg(context, report_id, session_id, reporter_id, reported_id, reason_code):
     try:
         result = await judge_report(
             report_id=report_id,
@@ -105,7 +110,6 @@ async def report_reason_callback(update: Update, context: ContextTypes.DEFAULT_T
     except Exception:
         logger.exception("خطای غیرمنتظره در judge_report برای report_id=%s", report_id)
         result = {"verdict": "pending"}
-
     await _notify_verdict(context, reporter_id, reported_id, result)
 
 
@@ -251,12 +255,15 @@ async def handle_profile_report(update: Update, context: ContextTypes.DEFAULT_TY
         except TelegramError:
             logger.warning("امکانِ دانلودِ عکسِ پروفایل برای بررسیِ AI وجود نداشت.")
 
+    asyncio.create_task(_run_profile_judge_bg(context, profile_report_id, reporter_id, reported_id, snapshot, image_bytes))
+
+
+async def _run_profile_judge_bg(context, profile_report_id, reporter_id, reported_id, snapshot, image_bytes):
     try:
         result = await judge_profile_report(profile_report_id, reporter_id, reported_id, snapshot, image_bytes)
     except Exception:
         logger.exception("خطای غیرمنتظره در judge_profile_report برای profile_report_id=%s", profile_report_id)
         result = {"verdict": "pending"}
-
     await _notify_profile_verdict(context, reporter_id, reported_id, result)
 
 
