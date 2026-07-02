@@ -1,0 +1,73 @@
+pg_users_by_gender:
+  query: |
+    SELECT gender::text AS gender, COUNT(*) AS count
+    FROM users
+    GROUP BY gender
+  metrics:
+    - gender:
+        usage: LABEL
+        description: gender
+    - count:
+        usage: GAUGE
+        description: Number of registered users per gender
+
+pg_users_by_province:
+  query: |
+    SELECT COALESCE(province, 'نامشخص') AS province, COUNT(*) AS count
+    FROM users
+    GROUP BY province
+    ORDER BY count DESC
+    LIMIT 20
+  metrics:
+    - province:
+        usage: LABEL
+        description: province
+    - count:
+        usage: GAUGE
+        description: Number of registered users per province
+
+pg_users_by_city:
+  query: |
+    SELECT COALESCE(city, 'نامشخص') AS city,
+           COALESCE(province, 'نامشخص') AS province,
+           COUNT(*) AS count
+    FROM users
+    GROUP BY city, province
+    ORDER BY count DESC
+    LIMIT 30
+  metrics:
+    - city:
+        usage: LABEL
+        description: city
+    - province:
+        usage: LABEL
+        description: province
+    - count:
+        usage: GAUGE
+        description: Number of registered users per city
+
+pg_total_coins:
+  query: |
+    SELECT SUM(coins) AS total
+    FROM users
+  metrics:
+    - total:
+        usage: GAUGE
+        description: Total coins across all users
+
+pg_users_total:
+  query: |
+    SELECT COUNT(*) AS count,
+           COUNT(*) FILTER (WHERE created_at > NOW() - INTERVAL '24 hours') AS new_today,
+           COUNT(*) FILTER (WHERE created_at > NOW() - INTERVAL '7 days') AS new_week
+    FROM users
+  metrics:
+    - count:
+        usage: GAUGE
+        description: Total registered users
+    - new_today:
+        usage: GAUGE
+        description: New users in last 24 hours
+    - new_week:
+        usage: GAUGE
+        description: New users in last 7 days

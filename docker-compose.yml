@@ -98,6 +98,9 @@ services:
     restart: unless-stopped
     environment:
       DATA_SOURCE_NAME: postgresql://melogap:melogap@postgres:5432/melogap?sslmode=disable
+    volumes:
+      - ./pg_custom_queries.yml:/pg_custom_queries.yml:ro
+    command: ["--extend.query-path=/pg_custom_queries.yml"]
 
   redis-exporter:
     image: oliver006/redis_exporter:v1.62.0

@@ -47,14 +47,42 @@
       "fieldConfig": {"defaults": {"unit": "percent", "color": {"mode": "thresholds"}, "thresholds": {"steps": [{"color": "green", "value": 0}, {"color": "orange", "value": 75}, {"color": "red", "value": 90}]}}}
     },
     {
+      "id": 14, "type": "stat", "title": "کل کاربران ثبت‌شده",
+      "gridPos": {"x": 0, "y": 4, "w": 4, "h": 4},
+      "targets": [{"expr": "pg_users_total_count", "datasource": "Prometheus"}],
+      "options": {"colorMode": "background"},
+      "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "thresholds": {"steps": [{"color": "blue", "value": 0}]}}}
+    },
+    {
+      "id": 15, "type": "stat", "title": "کاربر جدید امروز",
+      "gridPos": {"x": 4, "y": 4, "w": 4, "h": 4},
+      "targets": [{"expr": "pg_users_total_new_today", "datasource": "Prometheus"}],
+      "options": {"colorMode": "background"},
+      "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "thresholds": {"steps": [{"color": "green", "value": 0}]}}}
+    },
+    {
+      "id": 16, "type": "stat", "title": "کاربر جدید این هفته",
+      "gridPos": {"x": 8, "y": 4, "w": 4, "h": 4},
+      "targets": [{"expr": "pg_users_total_new_week", "datasource": "Prometheus"}],
+      "options": {"colorMode": "background"},
+      "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "thresholds": {"steps": [{"color": "green", "value": 0}]}}}
+    },
+    {
+      "id": 17, "type": "stat", "title": "کل سکه‌ها",
+      "gridPos": {"x": 12, "y": 4, "w": 4, "h": 4},
+      "targets": [{"expr": "pg_total_coins_total", "datasource": "Prometheus"}],
+      "options": {"colorMode": "background"},
+      "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "thresholds": {"steps": [{"color": "yellow", "value": 0}]}}}
+    },
+    {
       "id": 7, "type": "timeseries", "title": "پیام‌های relay شده در ثانیه",
-      "gridPos": {"x": 0, "y": 4, "w": 12, "h": 8},
+      "gridPos": {"x": 0, "y": 8, "w": 12, "h": 8},
       "targets": [{"expr": "rate(bot_messages_relayed_total[1m])", "legendFormat": "msg/s", "datasource": "Prometheus"}],
       "fieldConfig": {"defaults": {"unit": "reqps", "color": {"mode": "palette-classic"}}}
     },
     {
       "id": 8, "type": "timeseries", "title": "چت شروع‌شده / پایان‌یافته",
-      "gridPos": {"x": 12, "y": 4, "w": 12, "h": 8},
+      "gridPos": {"x": 12, "y": 8, "w": 12, "h": 8},
       "targets": [
         {"expr": "rate(bot_chats_started_total[5m])", "legendFormat": "شروع‌شده", "datasource": "Prometheus"},
         {"expr": "rate(bot_chats_ended_total[5m])", "legendFormat": "پایان‌یافته", "datasource": "Prometheus"}
@@ -62,14 +90,35 @@
       "fieldConfig": {"defaults": {"unit": "reqps", "color": {"mode": "palette-classic"}}}
     },
     {
+      "id": 18, "type": "piechart", "title": "کاربران به تفکیک جنسیت",
+      "gridPos": {"x": 0, "y": 16, "w": 8, "h": 8},
+      "targets": [{"expr": "pg_users_by_gender_count", "legendFormat": "{{gender}}", "datasource": "Prometheus"}],
+      "options": {"pieType": "pie", "displayLabels": ["name", "percent"]},
+      "fieldConfig": {"defaults": {"color": {"mode": "palette-classic"}}}
+    },
+    {
+      "id": 19, "type": "barchart", "title": "کاربران به تفکیک استان (top 20)",
+      "gridPos": {"x": 8, "y": 16, "w": 16, "h": 8},
+      "targets": [{"expr": "topk(20, pg_users_by_province_count)", "legendFormat": "{{province}}", "datasource": "Prometheus"}],
+      "options": {"orientation": "horizontal", "xTickLabelRotation": 0},
+      "fieldConfig": {"defaults": {"color": {"mode": "palette-classic"}}}
+    },
+    {
+      "id": 20, "type": "barchart", "title": "کاربران به تفکیک شهر (top 30)",
+      "gridPos": {"x": 0, "y": 24, "w": 24, "h": 8},
+      "targets": [{"expr": "topk(30, pg_users_by_city_count)", "legendFormat": "{{city}} ({{province}})", "datasource": "Prometheus"}],
+      "options": {"orientation": "horizontal"},
+      "fieldConfig": {"defaults": {"color": {"mode": "palette-classic"}}}
+    },
+    {
       "id": 9, "type": "timeseries", "title": "CPU سرور",
-      "gridPos": {"x": 0, "y": 12, "w": 8, "h": 8},
+      "gridPos": {"x": 0, "y": 32, "w": 8, "h": 8},
       "targets": [{"expr": "100 - (avg by(instance)(irate(node_cpu_seconds_total{mode=\"idle\"}[1m])) * 100)", "legendFormat": "CPU %", "datasource": "Prometheus"}],
       "fieldConfig": {"defaults": {"unit": "percent", "max": 100}}
     },
     {
       "id": 10, "type": "timeseries", "title": "RAM سرور",
-      "gridPos": {"x": 8, "y": 12, "w": 8, "h": 8},
+      "gridPos": {"x": 8, "y": 32, "w": 8, "h": 8},
       "targets": [
         {"expr": "node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes", "legendFormat": "استفاده‌شده", "datasource": "Prometheus"},
         {"expr": "node_memory_MemTotal_bytes", "legendFormat": "کل", "datasource": "Prometheus"}
@@ -78,19 +127,19 @@
     },
     {
       "id": 11, "type": "timeseries", "title": "Redis — حافظه",
-      "gridPos": {"x": 16, "y": 12, "w": 8, "h": 8},
+      "gridPos": {"x": 16, "y": 32, "w": 8, "h": 8},
       "targets": [{"expr": "redis_memory_used_bytes", "legendFormat": "used", "datasource": "Prometheus"}],
       "fieldConfig": {"defaults": {"unit": "bytes"}}
     },
     {
       "id": 12, "type": "timeseries", "title": "PostgreSQL — اتصالات فعال",
-      "gridPos": {"x": 0, "y": 20, "w": 12, "h": 8},
+      "gridPos": {"x": 0, "y": 40, "w": 12, "h": 8},
       "targets": [{"expr": "pg_stat_activity_count", "legendFormat": "connections", "datasource": "Prometheus"}],
       "fieldConfig": {"defaults": {"color": {"mode": "palette-classic"}}}
     },
     {
       "id": 13, "type": "timeseries", "title": "AI jobs پردازش‌شده",
-      "gridPos": {"x": 12, "y": 20, "w": 12, "h": 8},
+      "gridPos": {"x": 12, "y": 40, "w": 12, "h": 8},
       "targets": [
         {"expr": "rate(bot_ai_jobs_processed_total{type=\"chat_report\"}[5m])", "legendFormat": "chat report", "datasource": "Prometheus"},
         {"expr": "rate(bot_ai_jobs_processed_total{type=\"profile_report\"}[5m])", "legendFormat": "profile report", "datasource": "Prometheus"}
