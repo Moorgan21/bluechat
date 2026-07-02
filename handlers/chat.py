@@ -135,6 +135,10 @@ async def _queue_timeout_job(context: ContextTypes.DEFAULT_TYPE) -> None:
     await rc.dequeue(user_id)
     await _unpin_queue_message(user_id, context)
 
+    if await rc.is_chat_payer(user_id):
+        await refund_coins(user_id, rc.CHAT_COIN_COST, "search_timeout_refund")
+        await rc.r.delete(rc.KEY_CHAT_PAYER.format(user_id=user_id))
+
     try:
         await context.bot.send_message(
             user_id,
@@ -270,7 +274,13 @@ async def stop_chat(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if await rc.is_waiting(user_id):
         await rc.dequeue(user_id)
         await _unpin_queue_message(user_id, context)
-        await update.effective_message.reply_text("از صف انتظار خارج شدی.", reply_markup=main_reply_keyboard())
+        if await rc.is_chat_payer(user_id):
+            await refund_coins(user_id, rc.CHAT_COIN_COST, "search_cancel_refund")
+            await rc.r.delete(rc.KEY_CHAT_PAYER.format(user_id=user_id))
+        await update.effective_message.reply_text(
+            "از صف انتظار خارج شدی.",
+            reply_markup=main_reply_keyboard(),
+        )
         return
 
     # پیش از clear_partner، وضعیت payer و تعداد پیام‌ها رو می‌گیریم
