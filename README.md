@@ -193,6 +193,29 @@ SPAM_BLOCK_DURATION=60    # مدت بلاک موقت (ثانیه)
 
 ---
 
+## 🧪 تست‌ها
+
+تست‌های واحد (`tests/`) روی یه دیتابیس PostgreSQL و یه ایندکسِ Redis کاملاً **ایزوله از پروداکشن** اجرا می‌شن — `conftest.py` عمداً قبل از اجرای هر تستی چک می‌کنه که `DATABASE_URL` به دیتابیسی با نام شاملِ `_test` و `REDIS_URL` به ایندکسِ ۱۵ اشاره کنه، وگرنه کلِ session بلافاصله fail می‌شه (برای جلوگیریِ قطعی از دست‌کاریِ تصادفیِ دیتای واقعی).
+
+```bash
+# ۱. یه دیتابیسِ تستی بساز (یک‌بار کافیه)
+createdb -U bluechat bluechat_test
+DATABASE_URL=postgresql+asyncpg://bluechat:bluechat@localhost:5432/bluechat_test \
+  python3 -c "import asyncio, db; asyncio.run(db.init_db())"
+
+# ۲. وابستگی‌های تست رو نصب کن
+pip install -r requirements-dev.txt
+
+# ۳. اجرا کن (حتماً با env جداگانه، نه env پروداکشن)
+DATABASE_URL=postgresql+asyncpg://bluechat:bluechat@localhost:5432/bluechat_test \
+REDIS_URL=redis://localhost:6379/15 \
+  pytest -v
+```
+
+اگه با Docker Compose کار می‌کنی، همین دستورات رو از داخلِ کانتینرِ `bot` (که به شبکه‌ی `postgres`/`redis` دسترسی داره) با `docker compose exec bot sh -c "..."` اجرا کن.
+
+---
+
 ## 📊 مانیتورینگ
 
 ### معماری

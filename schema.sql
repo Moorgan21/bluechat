@@ -136,6 +136,18 @@ CREATE TABLE IF NOT EXISTS warnings (
 );
 
 -- -------------------------------------------------------
+-- coin_transactions
+-- -------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS coin_transactions (
+    id         SERIAL PRIMARY KEY,
+    user_id    BIGINT NOT NULL,
+    amount     INTEGER NOT NULL,  -- مثبت = واریز، منفی = برداشت
+    reason     VARCHAR(64) NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT now()
+);
+
+-- -------------------------------------------------------
 -- blocked_senders
 -- -------------------------------------------------------
 
