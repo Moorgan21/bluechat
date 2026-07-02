@@ -23,7 +23,7 @@ services:
       GEMINI_API_KEY: ${GEMINI_API_KEY}
       GEMINI_RPM: ${GEMINI_RPM:-100}
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY}
-      DATABASE_URL: postgresql+asyncpg://melogap:melogap@postgres:5432/melogap
+      DATABASE_URL: postgresql+asyncpg://bluechat:bluechat@postgres:5432/bluechat
       READ_DATABASE_URL: ${READ_DATABASE_URL:-}
       DB_POOL_SIZE: ${DB_POOL_SIZE:-20}
       DB_MAX_OVERFLOW: ${DB_MAX_OVERFLOW:-40}
@@ -47,7 +47,7 @@ services:
       GEMINI_API_KEY: ${GEMINI_API_KEY}
       GEMINI_RPM: ${GEMINI_RPM:-100}
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY}
-      DATABASE_URL: postgresql+asyncpg://melogap:melogap@postgres:5432/melogap
+      DATABASE_URL: postgresql+asyncpg://bluechat:bluechat@postgres:5432/bluechat
       READ_DATABASE_URL: ${READ_DATABASE_URL:-}
       DB_POOL_SIZE: ${DB_POOL_SIZE:-20}
       DB_MAX_OVERFLOW: ${DB_MAX_OVERFLOW:-40}
@@ -59,7 +59,7 @@ services:
     restart: unless-stopped
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - melogap_prometheus_data:/prometheus
+      - bluechat_prometheus_data:/prometheus
     command:
       - "--config.file=/etc/prometheus/prometheus.yml"
       - "--storage.tsdb.retention.time=15d"
@@ -75,7 +75,7 @@ services:
       GF_SERVER_ROOT_URL: https://apticteam.ir/grafana/
       GF_SERVER_SERVE_FROM_SUB_PATH: "true"
     volumes:
-      - melogap_grafana_data:/var/lib/grafana
+      - bluechat_grafana_data:/var/lib/grafana
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
       - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
 
@@ -97,7 +97,7 @@ services:
     image: prometheuscommunity/postgres-exporter:v0.15.0
     restart: unless-stopped
     environment:
-      DATA_SOURCE_NAME: postgresql://melogap:melogap@postgres:5432/melogap?sslmode=disable
+      DATA_SOURCE_NAME: postgresql://bluechat:bluechat@postgres:5432/bluechat?sslmode=disable
     volumes:
       - ./pg_custom_queries.yml:/pg_custom_queries.yml:ro
     command: ["--extend.query-path=/pg_custom_queries.yml"]
@@ -112,13 +112,13 @@ services:
     image: postgis/postgis:16-3.4
     restart: unless-stopped
     environment:
-      POSTGRES_USER: melogap
-      POSTGRES_PASSWORD: melogap
-      POSTGRES_DB: melogap
+      POSTGRES_USER: bluechat
+      POSTGRES_PASSWORD: bluechat
+      POSTGRES_DB: bluechat
     volumes:
-      - melogap_pgdata:/var/lib/postgresql/data
+      - bluechat_pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U melogap -d melogap"]
+      test: ["CMD-SHELL", "pg_isready -U bluechat -d bluechat"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -127,7 +127,7 @@ services:
     image: redis:7
     restart: unless-stopped
     volumes:
-      - melogap_redisdata:/data
+      - bluechat_redisdata:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -135,7 +135,7 @@ services:
       retries: 10
 
 volumes:
-  melogap_pgdata:
-  melogap_redisdata:
-  melogap_prometheus_data:
-  melogap_grafana_data:
+  bluechat_pgdata:
+  bluechat_redisdata:
+  bluechat_prometheus_data:
+  bluechat_grafana_data:
