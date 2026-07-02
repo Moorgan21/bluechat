@@ -51,6 +51,9 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
+WEBHOOK_URL = os.environ.get("WEBHOOK_URL", "")
+WEBHOOK_SECRET = os.environ.get("WEBHOOK_SECRET", "")
+WEBHOOK_PORT = int(os.environ.get("WEBHOOK_PORT", "8080"))
 
 
 # ---------------------------------------------------------------------------
@@ -464,7 +467,17 @@ def main() -> None:
     app.job_queue.run_repeating(_purge_stale_queue_job, interval=60 * 3, first=30)
 
     logger.info("ربات در حال اجراست...")
-    app.run_polling(allowed_updates=Update.ALL_TYPES)
+    if WEBHOOK_URL:
+        app.run_webhook(
+            listen="0.0.0.0",
+            port=WEBHOOK_PORT,
+            webhook_url=WEBHOOK_URL,
+            url_path=WEBHOOK_URL.split("/", 3)[-1],
+            secret_token=WEBHOOK_SECRET or None,
+            allowed_updates=Update.ALL_TYPES,
+        )
+    else:
+        app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 
 if __name__ == "__main__":
