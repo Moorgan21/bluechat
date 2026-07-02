@@ -1,9 +1,13 @@
 """
-Token-bucket rate limiter for Gemini API — 100 requests per minute.
+Token-bucket rate limiter for Gemini API.
+Limit is read from GEMINI_RPM env var (default: 100 requests per minute).
 """
 
 import asyncio
+import os
 import time
+
+_RPM = int(os.environ.get("GEMINI_RPM", "100"))
 
 
 class _TokenBucket:
@@ -30,5 +34,4 @@ class _TokenBucket:
             await asyncio.sleep(wait)
 
 
-# 100 req/min = 100/60 tokens per second, burst up to 100
-gemini_limiter = _TokenBucket(rate=100 / 60, capacity=100)
+gemini_limiter = _TokenBucket(rate=_RPM / 60, capacity=_RPM)
