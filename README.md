@@ -302,7 +302,7 @@ bluechat/
 │   └── dashboards/
 │       └── bluechat.json # داشبورد پیش‌فرض Blue Chat Bot
 ├── iran_cities.json      # لیست ۳۱ استان و تمام شهرهای ایران
-├── LICENSE               # All Rights Reserved
+├── LICENSE               # GNU Affero General Public License v3 (AGPL-3.0)
 └── requirements.txt      # وابستگی‌های Python
 ```
 
