@@ -25,7 +25,6 @@ state لحظه‌ایِ گفتگو رو نگه می‌داره.
 
 import json
 import os
-import random
 from typing import Optional
 
 import redis.asyncio as redis
@@ -167,26 +166,92 @@ async def get_chat_msg_count(user_a: int, user_b: int) -> int:
     return int(val) if val else 0
 
 
-async def pop_matching_waiting(user_id: int, desired_gender: Optional[str]) -> Optional[int]:
-    own_gender = await _user_gender_str(user_id)
-    search_genders = [desired_gender] if desired_gender else list(PARTNER_GENDERS)
+# --- تطبیقِ atomic با اسکریپتِ Lua ---
+# قبلاً «چک کن کسی هست، اگه نه enqueue کن» دو round-trip جدا بود
+# (pop_matching_waiting بعد enqueue)، که یه فاصله‌ی TOCTOU واقعی
+# می‌ذاشت: اگه دو کاربر همزمان می‌رسیدن، ممکن بود هیچ‌کدوم توی چکِ
+# اولشون همدیگه رو نبینن و هر دو enqueue بشن، و بعد هر دو مستقلاً موفق
+# به match‌کردنِ همدیگه بشن (دو تا ChatSession جدا برای یه جفت!). یه
+# sleep(0.8) موقتاً این پنجره رو کوچیک می‌کرد ولی نمی‌بستش. حالا کلِ
+# «جستجو یا enqueue» توی یه اسکریپتِ Lواحد و atomic اجرا می‌شه، پس
+# اصلاً همچین پنجره‌ای وجود نداره.
+_MATCH_OR_ENQUEUE_LUA = """
+local self_id = ARGV[1]
+local own_gender = ARGV[2]
+local desired_gender = ARGV[3]
+local now = ARGV[4]
+local desired_key_prefix = ARGV[5]
 
-    candidates: list[int] = []
-    for gender in search_genders:
-        members = await r.zrange(KEY_WAITING_QUEUE_BY_GENDER.format(gender=gender), 0, -1)
-        candidates.extend(int(m) for m in members if int(m) != user_id)
+local qkeys = {}
+qkeys["male"] = KEYS[1]
+qkeys["female"] = KEYS[2]
 
-    if not candidates:
-        return None
+local candidate_genders = {}
+if desired_gender ~= "" then
+    candidate_genders[1] = desired_gender
+else
+    candidate_genders[1] = "male"
+    candidate_genders[2] = "female"
+end
 
-    random.shuffle(candidates)
-    for candidate_id in candidates:
-        candidate_desired = await get_desired_gender(candidate_id)
-        if candidate_desired is None or candidate_desired == own_gender:
-            if await dequeue(candidate_id):
+for _, gender in ipairs(candidate_genders) do
+    local members = redis.call("ZRANGE", qkeys[gender], 0, -1)
+    for _, candidate_id in ipairs(members) do
+        if candidate_id ~= self_id then
+            local candidate_desired = redis.call("GET", desired_key_prefix .. candidate_id)
+            if candidate_desired == false or candidate_desired == own_gender then
+                redis.call("ZREM", KEYS[1], candidate_id)
+                redis.call("ZREM", KEYS[2], candidate_id)
+                redis.call("DEL", desired_key_prefix .. candidate_id)
                 return candidate_id
+            end
+        end
+    end
+end
 
-    return None
+redis.call("ZADD", qkeys[own_gender], now, self_id)
+if desired_gender ~= "" then
+    redis.call("SET", desired_key_prefix .. self_id, desired_gender)
+else
+    redis.call("DEL", desired_key_prefix .. self_id)
+end
+return false
+"""
+
+_match_or_enqueue_script = r.register_script(_MATCH_OR_ENQUEUE_LUA)
+
+
+async def atomic_match_or_enqueue(user_id: int, desired_gender: Optional[str]) -> tuple[bool, Optional[int]]:
+    """جایگزینِ atomic برای «pop_matching_waiting بعد enqueue»؛ توی یه
+    round-trip واحد یا یه partnerِ سازگار پیدا و claim می‌کنه، یا (اگه
+    کسی نبود) خودِ کاربر رو توی صفِ جنسیتِ خودش enqueue می‌کنه.
+
+    خروجی (entered, partner_id):
+    - (False, None): جنسیتِ خودِ کاربر توی پروفایل تنظیم نشده، پس
+      اصلاً وارد صف نشد.
+    - (True, None): صف‌شد و منتظره؛ کسی این لحظه پیدا نشد.
+    - (True, partner_id): بلافاصله matched شد؛ partner از قبل از صف
+      حذف شده (خودِ user_id هیچ‌وقت enqueue نشد)."""
+    import time
+
+    own_gender = await _user_gender_str(user_id)
+    if own_gender is None:
+        return False, None
+
+    result = await _match_or_enqueue_script(
+        keys=[
+            KEY_WAITING_QUEUE_BY_GENDER.format(gender="male"),
+            KEY_WAITING_QUEUE_BY_GENDER.format(gender="female"),
+        ],
+        args=[
+            str(user_id),
+            own_gender,
+            desired_gender or "",
+            time.time(),
+            KEY_USER_DESIRED_GENDER.format(user_id=""),
+        ],
+    )
+    return True, (int(result) if result else None)
 
 
 async def purge_stale_queue_entries() -> int:

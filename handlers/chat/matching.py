@@ -18,7 +18,6 @@
 پیام صف، و timeout دو دقیقه‌ای.
 """
 
-import asyncio
 import logging
 
 from telegram import Update
@@ -66,47 +65,43 @@ async def check_room_conflict(user_id: int) -> str | None:
 
 async def try_match(user_id: int, context: ContextTypes.DEFAULT_TYPE, desired_gender: str | None) -> bool:
     """سعی می‌کنه بر اساس desired_gender ("male"/"female"/None) برای
-    user_id یه کاندیدای مناسب پیدا کنه. اگه پیدا نشد، وارد صفِ مخصوصِ
-    جنسیتِ خودش می‌شه، پیامِ صف رو پین می‌کنه، و یه job برای timeout دو
-    دقیقه‌ای زمان‌بندی می‌کنه."""
-    partner_id = await rc.pop_matching_waiting(user_id, desired_gender)
+    user_id یه کاندیدای مناسب پیدا کنه. جستجو و enqueue توی یه
+    اسکریپتِ Lua اتمیک انجام می‌شه (نگاه کن به
+    redis_client.atomic_match_or_enqueue) پس دیگه فاصله‌ی race بینِ
+    «چک‌کردن» و «صف‌شدن» وجود نداره. اگه پیدا نشد، پیامِ صف رو پین
+    می‌کنه و یه job برای timeout دو دقیقه‌ای زمان‌بندی می‌کنه."""
+    entered, partner_id = await rc.atomic_match_or_enqueue(user_id, desired_gender)
+
+    if not entered:
+        await context.bot.send_message(
+            user_id,
+            "⚠️ برای ورود به صف باید جنسیتت توی پروفایل تنظیم شده باشه. "
+            "از منوی «👤 پروفایل» جنسیتت رو تنظیم کن.",
+        )
+        return False
 
     if partner_id is None:
-        entered = await rc.enqueue(user_id, desired_gender)
-        if not entered:
-            await context.bot.send_message(
-                user_id,
-                "⚠️ برای ورود به صف باید جنسیتت توی پروفایل تنظیم شده باشه. "
-                "از منوی «👤 پروفایل» جنسیتت رو تنظیم کن.",
-            )
-            return False
+        sent = await context.bot.send_message(
+            user_id,
+            "⏳ شما در صف هستید...\nبه محض پیدا شدن یک همراه، بهت خبر می‌دم.",
+            reply_markup=cancel_queue_keyboard(),
+        )
+        try:
+            await context.bot.pin_chat_message(user_id, sent.message_id, disable_notification=True)
+            await rc.set_queue_pin_message(user_id, sent.message_id)
+        except TelegramError:
+            logger.warning("امکان پین‌کردن پیامِ صف برای user_id=%s وجود نداشت.", user_id)
 
-        # یه لحظه صبر می‌کنیم، شاید کاربر دیگه‌ای همزمان وارد صف شده باشه
-        await asyncio.sleep(0.8)
-        partner_id = await rc.pop_matching_waiting(user_id, desired_gender)
-        if partner_id is not None:
-            await rc.dequeue(user_id)
-        else:
-            sent = await context.bot.send_message(
-                user_id,
-                "⏳ شما در صف هستید...\nبه محض پیدا شدن یک همراه، بهت خبر می‌دم.",
-                reply_markup=cancel_queue_keyboard(),
-            )
-            try:
-                await context.bot.pin_chat_message(user_id, sent.message_id, disable_notification=True)
-                await rc.set_queue_pin_message(user_id, sent.message_id)
-            except TelegramError:
-                logger.warning("امکان پین‌کردن پیامِ صف برای user_id=%s وجود نداشت.", user_id)
+        context.job_queue.run_once(
+            _queue_timeout_job,
+            when=rc.QUEUE_TIMEOUT_SECONDS,
+            data={"user_id": user_id},
+            name=f"queue_timeout_{user_id}",
+        )
+        return False
 
-            context.job_queue.run_once(
-                _queue_timeout_job,
-                when=rc.QUEUE_TIMEOUT_SECONDS,
-                data={"user_id": user_id},
-                name=f"queue_timeout_{user_id}",
-            )
-            return False
-
-    await rc.dequeue(user_id)
+    # partner همین الان و atomic پیدا شد؛ خودِ user_id هیچ‌وقت enqueue
+    # نشد (فقط partner از صف حذف شده)، پس دیگه نیازی به dequeue(user_id) نیست.
     await _unpin_queue_message(user_id, context)
     await _unpin_queue_message(partner_id, context)
 
