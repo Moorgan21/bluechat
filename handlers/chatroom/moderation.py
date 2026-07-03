@@ -148,8 +148,11 @@ async def _set_room_status(update: Update, context: ContextTypes.DEFAULT_TYPE, i
 
     other_ids = [uid for uid in result["member_ids"] if uid != user_id]
     if is_open:
-        # با بازشدنِ اتاق، اعضا برمی‌گردن به کیبوردِ محدودِ داخلِ اتاق
-        # (چون دوباره می‌شه پیام رد و بدل کرد).
+        # با بازشدنِ اتاق، هندلرِ اتاقِ اعضا دوباره فعال می‌شه (حتی اگه
+        # قبلش با «🚪 خروج» خودشون غیرفعالش کرده بودن) و کیبوردِ
+        # داخلِ اتاق برمی‌گرده، چون دوباره می‌شه پیام رد و بدل کرد.
+        for uid in other_ids:
+            await rc.unsuppress_room_ui(uid)
         await broadcast_system_message(
             result["room_id"],
             "اتاق دوباره باز شد؛ می‌تونید پیام بدید.",
@@ -159,10 +162,13 @@ async def _set_room_status(update: Update, context: ContextTypes.DEFAULT_TYPE, i
         )
         text = "🔓 اتاق باز شد."
     else:
-        # با بسته‌شدنِ اتاق، اعضا (نه owner) به منوی اصلیِ کامل و
-        # بدون‌تغییر هدایت می‌شن؛ همچنان active_room_id دارن (نمی‌تونن
-        # وارد چتِ ۱به۱ بشن یا اتاقِ دیگه بسازن/بهش ملحق بشن) ولی
-        # می‌تونن با /room وضعیتِ همین اتاق رو هر وقت خواستن ببینن.
+        # با بسته‌شدنِ اتاق، هندلرِ اتاقِ اعضا (نه owner) غیرفعال می‌شه
+        # و به منوی اصلیِ کامل و بدون‌تغییر هدایت می‌شن؛ عضویت
+        # (active_room_id) دست‌نخورده می‌مونه، پس همچنان نمی‌تونن
+        # وارد چتِ ۱به۱ بشن یا اتاقِ دیگه بسازن/بهش ملحق بشن، ولی با
+        # /room هر وقت خواستن هندلرِ اتاق دوباره فعال می‌شه.
+        for uid in other_ids:
+            await rc.suppress_room_ui(uid)
         await broadcast_system_message(
             result["room_id"],
             "اتاقت موقتاً بسته شد و فعلاً پیامی رد و بدل نمی‌شه. با دستورِ /room "

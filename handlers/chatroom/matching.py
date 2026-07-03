@@ -266,7 +266,8 @@ async def _notify_room_join_success(user_id: int, room, context: ContextTypes.DE
     try:
         await context.bot.send_message(
             user_id,
-            f"✅ به یه اتاقِ {gender_label} ملحق شدی! از الان هرچی بفرستی توی اتاق relay می‌شه 👇",
+            f"✅ به یه اتاقِ {gender_label} ملحق شدی! (شماره‌ی اتاق: {room.id})\n"
+            "از الان هرچی بفرستی توی اتاق relay می‌شه 👇",
             reply_markup=in_room_reply_keyboard(),
         )
     except TelegramError:

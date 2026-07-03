@@ -51,7 +51,7 @@ from telegram.ext import (
 import redis_client as rc
 import metrics
 import spam_guard
-from db import RoomStatus, get_chat_room, init_db, get_or_create_user, async_session, refund_coins
+from db import init_db, get_or_create_user, async_session, refund_coins
 from handlers import anon_note, chat, chatroom, coins, menu, nearby, profile, public_profile, report, search, settings
 
 logging.basicConfig(
@@ -189,23 +189,11 @@ IN_ROOM_KEYBOARD_ROUTES = {
     "🔒 چت امن (غیرفعال)": chatroom.toggle_secure_chat_button,
     "🔒 چت امن (فعال)": chatroom.toggle_secure_chat_button,
     "🚪 ترک اتاق": chatroom.leave_room_button,
+    "🚪 خروج": chatroom.exit_room_ui_button,
     "🗑 حذف اتاق": chatroom.delete_room_button,
     "🔒 بستن اتاق": chatroom.close_room_button,
     "🔓 بازکردن اتاق": chatroom.reopen_room_button,
     "🏠 اتاق چت": chatroom.show_room_menu,
-}
-
-# وقتی اتاق موقتاً بسته‌ست (نه حذف‌شده)، عضوهای غیر-owner همچنان
-# active_room_id دارن، ولی نباید بلاتکلیف بمونن — منوی اصلیِ کامل و
-# بدون‌تغییر باید در دسترس باشه، شاملِ «وصل کن به یه ناشناس» (که
-# می‌تونه کیبوردِ اینلاینِ انتخابِ جنسیت رو نشون بده؛ چکِ واقعیِ
-# تعارض فقط وقتیه که واقعاً روی یه گزینه بزنه، تو
-# handle_desired_gender_callback). فقط «🏠 اتاق چت» رو کنار می‌ذاریم
-# چون IN_ROOM_KEYBOARD_ROUTES از قبل مستقل از این دیکشنری مدیریتش
-# می‌کنه. این زیرمجموعه‌ی REPLY_KEYBOARD_ROUTES رو مشتق می‌کنیم تا با
-# اضافه‌شدنِ دکمه‌ی جدید به منوی اصلی، خودکار sync بمونه.
-ROOM_CLOSED_ALLOWED_ROUTES = {
-    key: handler for key, handler in REPLY_KEYBOARD_ROUTES.items() if key != "🏠 اتاق چت"
 }
 
 
@@ -267,17 +255,16 @@ async def text_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
     # قفلِ یک‌اتاقِ-فعال یعنی این با in_active_chat بالا mutually
     # exclusiveه؛ چکِ Redis (نه Postgres) برای اینکه هر پیام مجبور
-    # نباشه سراغِ دیتابیس بره، دقیقاً مثلِ get_partner.
+    # نباشه سراغِ دیتابیس بره، دقیقاً مثلِ get_partner. is_room_ui_suppressed
+    # یعنی «هنوز عضوی ولی موقتاً هندلرِ اتاق رو غیرفعال کردی» (با
+    # «🚪 خروج» یا چون owner اتاق رو بسته)؛ در اون حالت باید دقیقاً مثلِ
+    # نداشتنِ اتاق رفتار بشه — همه‌ی هندلرهای پایین (منو، ورودی‌های
+    # در-انتظار و...) بدونِ هیچ استثنایی در دسترس باشن.
     active_room_id = await rc.get_active_room(user_id)
-    if active_room_id is not None:
+    if active_room_id is not None and not await rc.is_room_ui_suppressed(user_id):
         if text in IN_ROOM_KEYBOARD_ROUTES:
             await IN_ROOM_KEYBOARD_ROUTES[text](update, context)
             return
-        if text in ROOM_CLOSED_ALLOWED_ROUTES:
-            room = await get_chat_room(active_room_id)
-            if room is not None and room.status == RoomStatus.closed:
-                await ROOM_CLOSED_ALLOWED_ROUTES[text](update, context)
-                return
         await chatroom.relay_room_message(update, context, active_room_id)
         return
 
@@ -347,7 +334,7 @@ async def media_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         return
 
     active_room_id = await rc.get_active_room(user_id)
-    if active_room_id is not None:
+    if active_room_id is not None and not await rc.is_room_ui_suppressed(user_id):
         await chatroom.relay_room_message(update, context, active_room_id)
         return
 

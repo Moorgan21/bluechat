@@ -65,8 +65,14 @@ async def _show_active_room_status(
     if room is None or room.status == RoomStatus.deleted:
         # آینه‌ی Redis عقب‌مونده؛ خودتصحیحی و برگشت به منوی معمولی
         await rc.clear_active_room(user_id)
+        await rc.unsuppress_room_ui(user_id)
         await show_room_menu(update, context)
         return
+
+    # چک‌کردنِ وضعیت با /room یا «🏠 اتاق چت» یعنی صراحتاً برگشتن به
+    # هندلرِ اتاق؛ حتی اگه با «🚪 خروج» یا بسته‌شدنِ اتاق موقتاً
+    # غیرفعال شده بود، اینجا دوباره فعال می‌شه.
+    await rc.unsuppress_room_ui(user_id)
 
     member_ids = await get_room_member_ids(room_id)
     is_owner = room.owner_id == user_id
@@ -75,6 +81,7 @@ async def _show_active_room_status(
 
     text = (
         "🏠 اتاقِ فعلیِ تو\n\n"
+        f"شماره‌ی اتاق: {room.id}\n"
         f"نوع: {gender_label}\n"
         f"اعضا: {len(member_ids)} از {room.capacity} نفر\n"
         f"وضعیت: {status_label}\n"
@@ -191,6 +198,7 @@ async def _handle_capacity_selected(update: Update, context: ContextTypes.DEFAUL
     gender_label = GENDER_LABELS_FA.get(gender_value, gender_value)
     await query.edit_message_text(
         "✅ اتاقت ساخته شد!\n\n"
+        f"شماره‌ی اتاق: {room.id}\n"
         f"نوع: {gender_label}\n"
         f"ظرفیت: {room.capacity} نفر\n\n"
         "الان توی این اتاق تنها هستی؛ به محض این‌که یه نفر بهش ملحق بشه، بهت خبر می‌دیم."

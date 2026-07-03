@@ -15,6 +15,11 @@
 
 """ترکِ اتاق توسطِ یه عضوِ عادی (نه owner). اگه بعدِ ترک فقط owner
 بمونه، اتاق خودکار حذف می‌شه و owner باخبر می‌شه.
+
+exit_room_ui_button جداست از leave_room_button: عضویت (چه عادی چه
+owner) دست‌نخورده می‌مونه، فقط هندلرِ اتاق (text_router/media_router)
+موقتاً غیرفعال می‌شه تا بشه از بقیه‌ی امکاناتِ ربات استفاده کرد؛ با
+/room یا «🏠 اتاق چت» دوباره فعال می‌شه.
 """
 
 import logging
@@ -81,3 +86,14 @@ async def leave_room_button(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         await try_fill_room_from_queue(result["room_id"], context)
 
     await update.message.reply_text("از اتاق خارج شدی.", reply_markup=main_reply_keyboard())
+
+
+async def exit_room_ui_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """دکمه‌ی «🚪 خروج»؛ عضویت رو دست‌نخورده می‌ذاره، فقط هندلرِ اتاق
+    رو موقتاً غیرفعال می‌کنه (نگاه کن به redis_client.suppress_room_ui)."""
+    user_id = update.effective_user.id
+    await rc.suppress_room_ui(user_id)
+    await update.message.reply_text(
+        "از هندلرِ اتاق خارج شدی؛ هنوز عضوشی. با /room یا «🏠 اتاق چت» می‌تونی برگردی.",
+        reply_markup=main_reply_keyboard(),
+    )

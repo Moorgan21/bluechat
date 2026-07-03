@@ -83,14 +83,15 @@ async def relay_room_message(update: Update, context: ContextTypes.DEFAULT_TYPE,
         return
 
     if room.status == RoomStatus.closed:
-        if user_id == room.owner_id:
-            keyboard = in_room_reply_keyboard(is_owner=True, room_open=False)
-        else:
-            keyboard = main_reply_keyboard()
+        # اگه به اینجا رسیده، یعنی suppress نشده (یا owner، یا عمداً
+        # با /room دوباره وارد شده)، پس هندلرِ اتاق براش فعاله؛ کیبورد
+        # همون کیبوردِ داخلِ اتاق می‌مونه، فقط اجازه‌ی relay نداره.
+        keyboard = in_room_reply_keyboard(
+            is_owner=user_id == room.owner_id,
+            room_open=False,
+        )
         await update.effective_message.reply_text(
-            "🔒 این اتاق فعلاً بسته‌ست و پیام رد و بدل نمی‌شه. با دستورِ /room "
-            "می‌تونی وضعیتشو چک کنی؛ فعلاً می‌تونی از بقیه‌ی امکاناتِ ربات استفاده کنی.",
-            reply_markup=keyboard,
+            "🔒 این اتاق فعلاً بسته‌ست و پیام رد و بدل نمی‌شه.", reply_markup=keyboard
         )
         return
 

@@ -611,8 +611,36 @@ async def get_active_room(user_id: int) -> Optional[int]:
     return int(val) if val else None
 
 
+KEY_ROOM_UI_SUPPRESSED = "bluechat:room_ui_suppressed:{user_id}"
+
+
 async def clear_active_room(user_id: int) -> None:
+    """پاک‌کردنِ suppress_room_ui همیشه همراهِ اینه: تا وقتی active_room
+    مقدار نداره، اون فلگ بی‌معنیه، پس نگه‌داشتنش فقط یه کلیدِ یتیمِ
+    Redisه — بهتره جفتِ هم پاک بشن تا فراموش نشه توی جاهای جدیدی که
+    عضویت واقعاً تموم می‌شه (ترک/اخراج/حذفِ اتاق)."""
     await r.delete(KEY_USER_ACTIVE_ROOM.format(user_id=user_id))
+    await r.delete(KEY_ROOM_UI_SUPPRESSED.format(user_id=user_id))
+
+
+async def suppress_room_ui(user_id: int) -> None:
+    """کاربر همچنان عضوِ اتاقه (active_room_id دست‌نخورده)، ولی
+    text_router/media_router باید موقتاً طوری رفتار کنن که انگار
+    اصلاً اتاقی نداره — برای «🚪 خروج» (بدونِ ترکِ اتاق) و برای
+    عضوهای غیر-owner وقتی owner اتاق رو می‌بنده. جدا از
+    KEY_USER_ACTIVE_ROOM نگه‌داری می‌شه تا _active_room_mirror_sync_job
+    (که فقط برای بازیابیِ crash بینِ commit و ست‌کردنِ آینه‌ست) این
+    حالتِ عمدی رو با یه mirrorِ گم‌شده اشتباه نگیره و خودکار
+    برنگردونتش."""
+    await r.set(KEY_ROOM_UI_SUPPRESSED.format(user_id=user_id), "1")
+
+
+async def unsuppress_room_ui(user_id: int) -> None:
+    await r.delete(KEY_ROOM_UI_SUPPRESSED.format(user_id=user_id))
+
+
+async def is_room_ui_suppressed(user_id: int) -> bool:
+    return bool(await r.exists(KEY_ROOM_UI_SUPPRESSED.format(user_id=user_id)))
 
 
 # نگاشتِ پیام‌های اتاق. برخلافِ KEY_MESSAGE_MAPِ زوجیِ ۱به۱، اینجا یه
