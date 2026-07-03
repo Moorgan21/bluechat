@@ -13,16 +13,13 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-"""
-هندلرهای بخش «افراد نزدیک» — با PostGIS.
+"""هندلرهای «افراد نزدیک»، با PostGIS.
 
-به‌جای محاسبه‌ی دستی فاصله در پایتون (Haversine)، از توابع مکانیِ
-PostGIS استفاده می‌کنیم:
-    - ST_DWithin(location, my_location, radius_meters)  → فیلتر شعاعی سریع با ایندکس GiST
-    - ST_Distance(location, my_location)                → فاصله‌ی دقیق برای مرتب‌سازی/نمایش
-
-این کوئری‌ها مستقیم توسط دیتابیس و با بهره از ایندکس مکانی انجام می‌شن،
-پس حتی با ده‌ها هزار کاربر هم سریع می‌مونن.
+به‌جای محاسبه‌ی دستیِ فاصله در پایتون (Haversine) از توابعِ مکانیِ
+PostGIS استفاده می‌کنیم: ST_DWithin برای فیلترِ شعاعیِ سریع با ایندکس
+GiST، و ST_Distance برای فاصله‌ی دقیق موقعِ مرتب‌سازی. این کوئری‌ها
+مستقیم تو دیتابیس با ایندکس اجرا می‌شن، پس با ده‌ها هزار کاربر هم
+سریع می‌مونن.
 """
 
 from datetime import datetime, timedelta

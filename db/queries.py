@@ -145,9 +145,7 @@ async def is_sender_blocked(owner_id: int, sender_id: int) -> bool:
         return result.scalar_one_or_none() is not None
 
 
-# ---------------------------------------------------------------------------
 # تاریخچه‌ی متنیِ چت (برای قضاوت AI) و سیستم اخطار
-# ---------------------------------------------------------------------------
 async def store_chat_message(
     session_id: int, sender_id: int, content: str | None, content_type: str = "text"
 ) -> None:
@@ -299,9 +297,9 @@ async def grant_report_reward(reporter_id: int, amount: int, report_id: int | No
 
 
 async def grant_referral_bonus(inviter_id: int, invitee_id: int) -> int | None:
-    """بعد از تکمیل پروفایل دعوت‌شده، به دعوت‌کننده ۵ سکه می‌ده — فقط
-    یک‌بار (idempotent). خروجی: موجودیِ جدید دعوت‌کننده یا None اگه قبلاً
-    داده شده یا کاربر پیدا نشد."""
+    """بعد از تکمیل پروفایل دعوت‌شده، به دعوت‌کننده ۵ سکه می‌ده، فقط یه بار
+    (idempotent). موجودیِ جدید دعوت‌کننده رو برمی‌گردونه، یا None اگه
+    قبلاً داده شده یا کاربر پیدا نشد."""
     from sqlalchemy.exc import IntegrityError
 
     reason = f"referral_bonus:{invitee_id}"
@@ -367,9 +365,7 @@ async def update_profile_report_verdict(
             await session.commit()
 
 
-# ---------------------------------------------------------------------------
 # پروفایلِ عمومی (/user_<code>)، حالتِ سایلنت، و سیستمِ واکنش
-# ---------------------------------------------------------------------------
 async def get_user_by_referral_code(code: str) -> User | None:
     async with async_session() as session:
         result = await session.execute(select(User).where(User.referral_code == code))
@@ -472,7 +468,7 @@ async def update_next_gender_pref(user_id: int, pref: str | None) -> None:
 
 
 async def clear_photo_file_id(user_id: int) -> None:
-    """photo_file_id نامعتبر رو از دیتابیس پاک می‌کنه — وقتی تلگرام BadRequest می‌ده."""
+    """وقتی تلگرام BadRequest می‌ده، photo_file_id نامعتبر رو از دیتابیس پاک می‌کنه."""
     async with async_session() as session:
         user = await session.get(User, user_id)
         if user:

@@ -197,7 +197,7 @@ async def next_chat(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 async def end_chat_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """هندلر دکمه‌ی «⛔️ پایان چت» — حداقل ۱۰ ثانیه حضور لازمه."""
+    """هندلر دکمه‌ی «⛔️ پایان چت»؛ حداقل ۱۰ ثانیه حضور لازمه."""
     user_id = update.effective_user.id
     chat_start = await rc.get_chat_start(user_id)
     if chat_start:

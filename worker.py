@@ -13,11 +13,9 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-"""
-AI Worker — پردازش صف قضاوت‌های AI در یک پروسه‌ی جداگانه
-
-جاب‌ها از Redis queue می‌خونه، قضاوت رو اجرا می‌کنه، و نتیجه رو
-مستقیماً از طریق Bot API برای کاربر می‌فرسته.
+"""AI Worker: پردازشِ صفِ قضاوت‌های AI تو یه پروسه‌ی جدا. جاب‌ها رو از
+Redis می‌خونه، قضاوت رو اجرا می‌کنه، و نتیجه رو مستقیم از طریق Bot API
+برای کاربر می‌فرسته.
 """
 import asyncio
 import base64
@@ -94,7 +92,7 @@ async def _update_queue_gauge() -> None:
 async def main() -> None:
     metrics.start_metrics_server()
     bot = Bot(token=BOT_TOKEN)
-    logger.info("AI worker started — listening for jobs")
+    logger.info("AI worker started, listening for jobs")
     asyncio.create_task(_update_queue_gauge())
     while True:
         try:

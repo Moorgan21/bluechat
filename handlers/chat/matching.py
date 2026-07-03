@@ -63,7 +63,7 @@ async def try_match(user_id: int, context: ContextTypes.DEFAULT_TYPE, desired_ge
             )
             return False
 
-        # یه لحظه صبر کن — شاید کاربر دیگه‌ای همزمان وارد صف شده باشه
+        # یه لحظه صبر می‌کنیم، شاید کاربر دیگه‌ای همزمان وارد صف شده باشه
         await asyncio.sleep(0.8)
         partner_id = await rc.pop_matching_waiting(user_id, desired_gender)
         if partner_id is not None:
@@ -212,8 +212,7 @@ async def start_chat(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 
 
 async def handle_desired_gender_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """هندلر دکمه‌های «دختر/پسر/فرقی‌نمی‌کنه» — بعد از انتخاب، matching
-    واقعی شروع می‌شه."""
+    """هندلر دکمه‌های «دختر/پسر/فرقی‌نمی‌کنه»؛ بعد از انتخاب matching واقعی شروع می‌شه."""
     query = update.callback_query
     await query.answer()
 

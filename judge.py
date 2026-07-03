@@ -13,42 +13,30 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-"""
-قضاوتِ AI برای گزارش‌های کاربران (با DeepSeek، متنی)
-------------------------------------------------------
-وقتی کاربری گزارش می‌ده، این ماژول تاریخچه‌ی متنیِ همون گفتگو (اگه هنوز
-در Postgres موجود باشه؛ یعنی هیچ‌کدوم از دو طرف تاریخچه رو پاک نکرده
-باشن) رو به DeepSeek می‌ده و ازش می‌خواد بر اساس دلیلِ گزارش، قضاوت کنه.
+"""قضاوت گزارش‌های کاربر با DeepSeek. وقتی یکی گزارش می‌ده، تاریخچه‌ی
+متنیِ گفتگو (اگه هنوز تو Postgres مونده باشه) می‌ره برای DeepSeek و
+میگیم بر اساس دلیل گزارش تصمیم بگیره.
 
-چرا DeepSeek به‌جای Gemini؟ برای بررسیِ متنیِ گزارش‌ها (که حجم بالایی
-داره)، هزینه‌ی توکنِ DeepSeek به‌مراتب پایین‌تره. Gemini همچنان برای
-moderation تصویریِ عکس پروفایل (moderation.py) و قضاوتِ گزارشِ پروفایل
-(profile_judge.py) استفاده می‌شه، چون اون‌ها نیاز به تحلیل تصویر دارن
-و DeepSeek قابلیت vision نداره.
+DeepSeek رو گذاشتیم چون برای این حجم متن ارزون‌تر از Geminiه. Gemini
+همچنان جای خودشو داره: moderation.py برای عکس پروفایل و profile_judge.py
+برای گزارش پروفایل، چون اونجا نیاز به vision هست و DeepSeek نداره.
 
-نیازمندی‌ها:
-    pip install openai   (API دیپ‌سیک سازگار با فرمت OpenAI است)
+نیاز به `pip install openai` (API دیپ‌سیک با فرمت OpenAI سازگاره) و
+env var به اسم DEEPSEEK_API_KEY.
 
-متغیر محیطی لازم:
-    export DEEPSEEK_API_KEY="کلید API از https://platform.deepseek.com"
+دو خروجی مستقل از هم داریم:
+- verdict درباره‌ی REPORTED: guilty یعنی طبق تاریخچه واقعاً مقصر بوده
+  (اخطار می‌گیره، گزارش‌دهنده ۵ سکه پاداش می‌گیره)، dismissed یعنی
+  گزارش بی‌اساس بوده (این‌بار خودِ گزارش‌دهنده اخطار می‌گیره).
+- reporter_also_guilty درباره‌ی خودِ گزارش‌دهنده، کاملاً جدا از verdict
+  بالا. مثلاً وقتی هر دو طرف به هم فحش داده‌ن، یا گزارش‌دهنده داره
+  تخلف خودشو دروغ به طرف مقابل نسبت می‌ده. توی این حالت یه اخطار
+  جداگانه هم به گزارش‌دهنده می‌خوره.
+- no_history وقتی تاریخچه پاک شده یا پیامی برای بررسی نبوده؛ اینجا
+  چون اصلاً چیزی برای قضاوت نیست، نه اخطاری میدیم نه پاداشی.
 
-قضاوت شاملِ دو تصمیمِ مستقله:
-    ۱) verdict درباره‌ی REPORTED (کاربرِ گزارش‌شده):
-       - guilty: واقعاً طبق تاریخچه مقصر بوده → اخطار می‌گیره، و
-         گزارش‌دهنده ۵ سکه پاداش می‌گیره.
-       - dismissed: گزارش بی‌اساس/نادرست بوده → گزارش‌دهنده اخطار می‌گیره.
-    ۲) reporter_also_guilty درباره‌ی REPORTER (کاربرِ گزارش‌دهنده):
-       اگه true باشه، یعنی خودِ گزارش‌دهنده هم در همون گفتگو رفتارِ
-       نامناسبِ مشابه (یا مرتبط با همون دلیل) داشته — مثلاً هر دو طرف
-       به هم فحش داده‌ن، یا گزارش‌دهنده داره تخلفِ خودش رو دروغ به طرفِ
-       مقابل نسبت می‌ده. در این حالت، صرف‌نظر از verdict، به REPORTER هم
-       جداگانه یه اخطار داده می‌شه (مستقل از اخطارِ dismissed).
-    - no_history: تاریخچه پاک شده یا پیامی برای بررسی نبود → هیچ اخطار/
-      پاداشی داده نمی‌شه (چون قابل بررسی نیست)
-
-اصل احتیاط: اگه DeepSeek پاسخ نامعتبر بده یا خطای شبکه/API رخ بده، به
-هیچ‌کدوم از دو طرف اخطار/پاداش داده نمی‌شه (fail-safe، چون تصمیمِ
-اشتباه به یه کاربر بی‌گناه آسیب واقعی داره).
+اگه DeepSeek خطا بده یا پاسخ نامعتبر برگردونه، به هیچکس اخطار/پاداش
+نمی‌دیم، چون یه تصمیم اشتباه می‌تونه به یه کاربر بی‌گناه ضرر واقعی بزنه.
 """
 
 import json
@@ -155,13 +143,11 @@ class JudgeResult:
 
 
 def _build_transcript_text(messages: list[dict], reporter_id: int, reported_id: int) -> str:
-    """هر پیام رو به یک شیءِ JSON مستقل (یک خط) تبدیل می‌کنه، نه به رشته‌ی
-    ساده‌ی "[ROLE]: text". دلیل: اگه متنِ خامِ کاربر مستقیم بعد از "[ROLE]:"
-    چسبونده بشه، کاربر می‌تونه با فرستادنِ یه پیامِ چندخطی که خودش شاملِ
-    "\\n[REPORTED]: ..." باشه، یه خطِ جعلیِ کاملاً قانع‌کننده به transcript
-    اضافه کنه و مدرکِ دروغین بسازه. با JSON encoding، هر newline یا کاراکترِ
-    خاصِ داخلِ متنِ کاربر escape می‌شه و دیگه نمی‌تونه از فیلدِ "text" خودش
-    خارج بشه و خطِ جدید بسازه."""
+    """هر پیام رو یه شیء JSON جدا می‌کنیم (یه خط)، نه رشته‌ی ساده‌ی
+    "[ROLE]: text". چون اگه ساده باشه، کاربر می‌تونه یه پیام چندخطی
+    بفرسته که خودش شامل "\\n[REPORTED]: ..." هست و یه خط جعلیِ قانع‌کننده
+    به transcript اضافه کنه. با JSON encoding این escape می‌شه و دیگه
+    نمی‌تونه از فیلد "text" فرار کنه."""
     lines = []
     for m in messages:
         role = "REPORTER" if m["sender_id"] == reporter_id else "REPORTED"
@@ -237,8 +223,7 @@ async def judge_report(report_id: int, session_id: int | None, reporter_id: int,
     result = await _run_deepseek_judge(reason_label, details, transcript)
 
     if result is None:
-        # قضاوت به هر دلیلی ممکن نشد؛ به‌صورت محافظه‌کارانه هیچ اخطار/
-        # پاداشی نمی‌دیم و گزارش رو در حالت pending نگه می‌داریم.
+        # قضاوت انجام نشد، پس دستِ خالی برمی‌گردیم و pending می‌ذاریمش
         return {"verdict": "pending"}
 
     await update_report_verdict(report_id, ReportVerdict(result.verdict), result.reason_fa)
@@ -251,7 +236,7 @@ async def judge_report(report_id: int, session_id: int | None, reporter_id: int,
     }
 
     if result.verdict == "guilty":
-        # REPORTED واقعاً مقصر بوده → اخطار برای REPORTED + پاداش برای REPORTER
+        # مقصره: اخطار به REPORTED، پاداش به REPORTER
         warning_number, auto_banned = await add_warning(reported_id, result.reason_fa, report_id)
         new_coin_balance = await grant_report_reward(reporter_id, REPORT_REWARD_COINS, report_id)
         output.update(
@@ -263,7 +248,7 @@ async def judge_report(report_id: int, session_id: int | None, reporter_id: int,
             }
         )
     else:
-        # گزارش نادرست/بی‌اساس بوده → اخطار برای REPORTER (به‌خاطرِ گزارشِ غلط)
+        # گزارش الکی بوده، این‌بار خودِ REPORTER اخطار می‌گیره
         warning_number, auto_banned = await add_warning(
             reporter_id, "ثبت گزارشِ نادرست/بی‌اساس", report_id
         )
@@ -274,11 +259,8 @@ async def judge_report(report_id: int, session_id: int | None, reporter_id: int,
             }
         )
 
-    # مستقل از verdict بالا: اگه AI تشخیص داده که خودِ REPORTER هم در
-    # همین گفتگو رفتارِ نامناسبی داشته (مثلاً هر دو طرف فحش داده‌ن)،
-    # یه اخطارِ جداگانه هم به REPORTER می‌دیم — این باعث می‌شه اگه
-    # REPORTER خودش فحش داده و بعد REPORTED رو گزارش کرده، جدا از
-    # نتیجه‌ی گزارش، بابتِ فحش‌دادنِ خودش هم مسئول شناخته بشه.
+    # این جدا از verdict بالاست: اگه هر دو طرف فحش داده باشن، REPORTER
+    # هم به‌خاطرِ رفتارِ خودش یه اخطارِ جداگانه می‌گیره.
     if result.reporter_also_guilty and result.reporter_reason_fa:
         extra_warning_number, extra_auto_banned = await add_warning(
             reporter_id, result.reporter_reason_fa, report_id

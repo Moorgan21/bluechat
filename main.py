@@ -13,26 +13,18 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-"""
-ربات چت ناشناس بلو چت — راه‌انداز اصلی
---------------------------------------------
-نیازمندی‌ها:
-    pip install python-telegram-bot==21.* sqlalchemy[asyncio] asyncpg redis[hiredis]
+"""راه‌انداز اصلی ربات چت ناشناس بلو چت.
 
-متغیرهای محیطی لازم:
-    export BOT_TOKEN="توکن ربات از BotFather"
-    export BOT_USERNAME="username_ربات (بدون @)"
-    export DATABASE_URL="postgresql+asyncpg://user:pass@host:5432/bluechat"
-    export REDIS_URL="redis://localhost:6379/0"
+نیاز به `pip install python-telegram-bot==21.* sqlalchemy[asyncio] asyncpg redis[hiredis]`
+و این env varها: BOT_TOKEN، BOT_USERNAME، DATABASE_URL، REDIS_URL.
 
-اجرا:
-    python main.py
+اجرا با `python main.py`.
 
-ساختار پروژه:
-    db.py              - مدل‌ها و اتصال Postgres
+ساختار پروژه، خلاصه:
+    db/                 - مدل‌ها و کوئری‌های Postgres
     redis_client.py     - صف matching و state لحظه‌ای در Redis
     keyboards.py        - همه‌ی دکمه‌های شیشه‌ای و کیبورد پایین
-    handlers/chat.py    - matching، relay پیام/ریکشن، پاک‌کردن تاریخچه
+    handlers/chat/      - matching، relay پیام/ریکشن، پاک‌کردن تاریخچه
     handlers/profile.py - پروفایل کاربر
     handlers/coins.py   - سکه، دعوت دوستان، لینک ناشناس اختصاصی
     handlers/search.py  - جستجوی هدفمند با فیلتر
@@ -74,9 +66,7 @@ WEBHOOK_SECRET = os.environ.get("WEBHOOK_SECRET", "")
 WEBHOOK_PORT = int(os.environ.get("WEBHOOK_PORT", "8080"))
 
 
-# ---------------------------------------------------------------------------
 # /start با پشتیبانی از deep-link های ref_<code> و direct_<code>
-# ---------------------------------------------------------------------------
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     telegram_user = update.effective_user
     args = context.args
@@ -130,10 +120,10 @@ async def _resolve_referral_code(code: str) -> int | None:
 
 
 async def _handle_direct_link(update: Update, context: ContextTypes.DEFAULT_TYPE, code: str) -> None:
-    """کاربر از طریق لینک ناشناسِ مستقیم اومده. برخلاف matching عادی،
-    اینجا هیچ ChatSession/جفت‌شدنِ دائمی ساخته نمی‌شه — فقط کاربر رو
-    وارد state «در حال نوشتن پیام ناشناس برای صاحب لینک» می‌کنیم؛ پیام
-    بعدیش با handlers.anon_note.send_anon_note ارسال می‌شه."""
+    """کاربر از طریق لینک ناشناسِ مستقیم اومده. برخلاف matching عادی
+    اینجا هیچ ChatSession یا جفت‌شدنِ دائمی نمی‌سازیم، فقط می‌ذاریمش تو
+    state «در حال نوشتن پیام ناشناس»؛ پیام بعدیش با
+    handlers.anon_note.send_anon_note ارسال می‌شه."""
     from handlers.profile import is_profile_complete, start_onboarding
 
     requester_id = update.effective_user.id
@@ -172,10 +162,8 @@ async def _handle_direct_link(update: Update, context: ContextTypes.DEFAULT_TYPE
     )
 
 
-# ---------------------------------------------------------------------------
-# روتر پیام‌های متنی/مدیا: اول چک می‌کنه ورودیِ در-انتظار (پروفایل/سرچ) هست یا نه،
-# وگرنه به relay چت ناشناس می‌سپاره.
-# ---------------------------------------------------------------------------
+# روتینگ پیام‌های متنی/مدیا؛ اول چک میشه ورودیِ در-انتظاره (پروفایل/سرچ)،
+# وگرنه میره relay چت ناشناس.
 REPLY_KEYBOARD_ROUTES = {
     "💬 وصل کن به یه ناشناس!": chat.start_chat,
     "💬 جستجوی کاربران 🔮": search.show_search_menu,
@@ -204,21 +192,21 @@ async def text_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
     _spam = await spam_guard.check_message(user_id)
     if _spam == spam_guard.SpamResult.ALREADY_BLOCKED:
-        return  # silent drop — هیچ ریپلایی نمی‌فرستیم
+        return  # silent drop، ریپلای نمی‌فرستیم
     if _spam == spam_guard.SpamResult.JUST_BLOCKED:
         secs = await spam_guard.remaining_block(user_id)
         await update.message.reply_text(f"⚠️ خیلی سریع پیام می‌فرستی! {secs} ثانیه صبر کن.")
         return
 
-    # ۱) اولویت اول: اگه کاربر وسط جریان onboarding (تکمیل اجباری پروفایل) هست
+    # اول onboarding (تکمیل اجباری پروفایل) چون همه‌چیز دیگه باید صبر کنه
     if await profile.handle_onboarding_text_input(update, context):
         return
 
-    # ۲) اگه کاربر منتظرِ نوشتنِ یه تگِ جدیدِ واکنشه
+    # بعد اینکه منتظر نوشتنِ یه تگِ جدیدِ واکنشه
     if await public_profile.handle_new_tag_input(update, context):
         return
 
-    # ۳) پیام دایرکت (شناسه فرستنده به مقصد نشون داده می‌شه)
+    # پیام دایرکت (شناسه فرستنده به مقصد نشون داده می‌شه)
     direct_target_id = context.user_data.pop("awaiting_direct_msg_target", None)
     if direct_target_id is not None:
         try:
@@ -228,7 +216,7 @@ async def text_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             raise
         return
 
-    # ۴) پیام ناشناس از طریق لینک مستقیم (بدون ساختن هیچ چت بازی)
+    # پیام ناشناس از طریق لینک مستقیم، بدون ساختن هیچ چت بازی
     note_target_id = context.user_data.pop("awaiting_note_target", None)
     if note_target_id is not None:
         try:
@@ -238,15 +226,13 @@ async def text_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             raise
         return
 
-    # ۴) اگه کاربر (صاحب یه لینک ناشناس) روی دکمه‌ی «پاسخ دادن» زده و
-    # منتظر نوشتنِ متنِ پاسخه.
+    # صاحبِ یه لینک ناشناس روی «پاسخ دادن» زده و منتظر متنِ پاسخه
     if await anon_note.handle_pending_reply_input(update, context):
         return
 
-    # ۵) اگه کاربر الان توی یه گفتگوی فعاله، فقط دو دکمه‌ی مخصوص چت و
-    # relay پیام مجازن؛ بقیه‌ی دکمه‌های منوی اصلی نادیده گرفته می‌شن
-    # (چون در حالت عادی اصلاً دیده نمی‌شن، ولی اگه از قبل روی صفحه‌شون
-    # مونده باشن یا کاربر تایپ‌شون کنه، نباید اتفاقی بیفته).
+    # توی گفتگوی فعال فقط دو دکمه‌ی مخصوصِ چت و relay پیام مجازن؛ بقیه‌ی
+    # دکمه‌های منوی اصلی معمولاً دیده نمی‌شن، ولی اگه از قبل رو صفحه
+    # مونده باشن نباید کاری انجام بدن.
     in_active_chat = await rc.get_partner(user_id) is not None
     if in_active_chat:
         if text in IN_CHAT_KEYBOARD_ROUTES:
@@ -255,7 +241,7 @@ async def text_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         await chat.relay_message(update, context)
         return
 
-    # ۶) کاربر توی گفتگو نیست: دکمه‌های منوی اصلی فعالن
+    # اینجا دیگه توی گفتگو نیست، دکمه‌های منوی اصلی فعالن
     if text in REPLY_KEYBOARD_ROUTES:
         await REPLY_KEYBOARD_ROUTES[text](update, context)
         return
@@ -269,9 +255,8 @@ async def text_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
 
 async def user_profile_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """هندلرِ دستورِ دینامیکِ /user_<code> — چون تلگرام دستوراتِ ثابت
-    می‌خواد، این با یه MessageHandler و regex گرفته می‌شه، نه
-    CommandHandler معمولی."""
+    """/user_<code> دستورِ دینامیکه و تلگرام دستوراتِ ثابت می‌خواد، برای
+    همین با MessageHandler و regex می‌گیریمش، نه CommandHandler معمولی."""
     text = (update.message.text or "").strip()
     if text.startswith("/user_"):
         code = text[len("/user_"):].split()[0]
@@ -324,9 +309,7 @@ async def media_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     await chat.relay_message(update, context)
 
 
-# ---------------------------------------------------------------------------
 # روتر callback_query بر اساس پیشوند callback_data
-# ---------------------------------------------------------------------------
 async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     data = update.callback_query.data or ""
     if update.effective_user:
@@ -465,8 +448,9 @@ async def _update_metrics_job(context: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 async def _purge_stale_queue_job(context: ContextTypes.DEFAULT_TYPE) -> None:
-    """هر ۳ دقیقه: ورودی‌های منقضی‌شده‌ی صف matching رو پاک می‌کنه.
-    در صورت ریستارت ربات، صف Redis پاک نمی‌شه — این job از zombie entry جلوگیری می‌کنه."""
+    """هر ۳ دقیقه ورودی‌های منقضیِ صفِ matching رو پاک می‌کنه. چون با
+    ریستارتِ ربات صفِ Redis خودش پاک نمی‌شه، این job جلوی zombie entry
+    رو می‌گیره."""
     removed = await rc.purge_stale_queue_entries()
     if removed:
         logger.info("پاکسازی صف: %d ورودی منقضی‌شده حذف شد.", removed)

@@ -97,7 +97,7 @@ async def show_profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             )
             return
         except Exception:
-            # file_id نامعتبر شده — از DB پاک می‌کنیم و به کاربر خبر می‌دیم
+            # file_id دیگه معتبر نیست، از DB پاکش می‌کنیم و به کاربر خبر می‌دیم
             await clear_photo_file_id(telegram_user.id)
             text += "\n\n⚠️ عکس پروفایلت نامعتبر شده. از «🖼 عکس پروفایل» دوباره آپلود کن."
 
@@ -315,7 +315,7 @@ async def handle_profile_photo_input(update: Update, context: ContextTypes.DEFAU
         result_text = _format_profile_text(user)
 
     context.user_data.pop(AWAITING_FIELD_KEY, None)
-    # عکس جدید همینجاست — مستقیم ارسال می‌کنیم بدون نیاز به fallback
+    # عکس جدید همینجاست، پس مستقیم می‌فرستیم و نیازی به fallback نیست
     try:
         await update.message.reply_photo(
             largest_photo.file_id,
@@ -336,14 +336,12 @@ async def cancel_profile_edit(update: Update, context: ContextTypes.DEFAULT_TYPE
         await update.message.reply_text("چیزی برای لغو کردن نیست.")
 
 
-# ---------------------------------------------------------------------------
-# جریان تکمیل اجباری پروفایل (Onboarding) — قبل از اولین ورود به چت
-# ---------------------------------------------------------------------------
+# جریان تکمیل اجباری پروفایل، قبل از اولین ورود به چت
 AWAITING_ONBOARDING_KEY = "awaiting_onboarding_field"  # "name" | "age"
 
 
 async def start_onboarding(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """جریان تکمیل اجباری پروفایل رو شروع می‌کنه: نام → جنسیت → سن."""
+    """جریان تکمیل اجباری پروفایل رو شروع می‌کنه: اول نام، بعد جنسیت، بعد سن."""
     from telegram import ReplyKeyboardRemove
 
     context.user_data[AWAITING_ONBOARDING_KEY] = "name"
@@ -413,7 +411,7 @@ async def handle_onboarding_text_input(update: Update, context: ContextTypes.DEF
         return True
 
     if step == "city":
-        # شهر باید از کیبورد انتخاب بشه — اگه تایپ کرد، keyboard رو دوباره نشون می‌دیم
+        # شهر باید از کیبورد انتخاب بشه، اگه تایپ کرد دوباره کیبورد رو نشون می‌دیم
         province = context.user_data.get("city_province", "")
         if province:
             await update.message.reply_text(
@@ -507,7 +505,7 @@ async def edit_province_callback(update: Update, context: ContextTypes.DEFAULT_T
 
 
 async def handle_city_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
-    """هندلر انتخاب شهر از کیبورد — هم onboarding هم ویرایش پروفایل."""
+    """هندلر انتخاب شهر از کیبورد؛ هم برای onboarding هم برای ویرایش پروفایل."""
     query = update.callback_query
     await query.answer()
     city = query.data.split(":", 1)[1]

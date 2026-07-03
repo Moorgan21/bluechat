@@ -1,6 +1,6 @@
-"""تست‌های واحد برای کسرِ سکه در پیامِ دایرکت (send_direct_msg در
-handlers/anon_note.py) — با موکِ سبکِ Update/Context تلگرام تا بدونِ
-نیاز به شبکه یا توکنِ واقعیِ بات تست بشه."""
+"""تست‌های واحد برای کسرِ سکه در پیامِ دایرکت (send_direct_msg تو
+handlers/anon_note.py)، با موکِ سبکِ Update/Context تلگرام تا بدونِ نیاز
+به شبکه یا توکنِ واقعیِ بات تست بشه."""
 
 from unittest.mock import AsyncMock, MagicMock
 
@@ -42,9 +42,8 @@ async def test_send_direct_msg_deducts_exactly_one_coin(make_user):
 
 
 async def test_send_direct_msg_charges_regardless_of_owner_reading_it(make_user):
-    """صریحاً همون رفتاری که خواسته شده: سکه در لحظه‌ی ارسال کسر می‌شه،
-    نه لحظه‌ای که مقصد پیام رو «می‌بینه» — اینجا هیچ شبیه‌سازیِ دیدنی
-    نیست و صرفاً با فرستادن، سکه باید کم بشه."""
+    """سکه همون لحظه‌ی ارسال کسر می‌شه، نه وقتی مقصد پیام رو می‌بینه؛
+    اینجا هیچ شبیه‌سازیِ دیدنی نیست، فقط با فرستادن سکه باید کم بشه."""
     sender = await make_user(coins=3)
     owner = await make_user(coins=0)
     update, context = _make_update(), _make_context()

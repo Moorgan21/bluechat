@@ -13,10 +13,7 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-"""
-کیبوردها (شیشه‌ای/inline و پایین‌صفحه/reply) — دقیقاً بر اساس چیدمان
-ربات بلو چت در اسکرین‌شات ارسالی.
-"""
+"""کیبوردهای شیشه‌ای (inline) و پایین‌صفحه (reply) رباتِ بلو چت."""
 
 import json
 import os
@@ -40,8 +37,7 @@ except Exception:
 
 
 def main_reply_keyboard() -> ReplyKeyboardMarkup:
-    """کیبورد پایین صفحه — دقیقاً مطابق اسکرین‌شات. فقط زمانی نشون داده
-    می‌شه که کاربر توی گفتگوی فعال نباشه."""
+    """کیبورد پایین صفحه؛ فقط وقتی نشون داده می‌شه که کاربر توی گفتگوی فعال نباشه."""
     keyboard = [
         [KeyboardButton("💬 وصل کن به یه ناشناس!")],
         [KeyboardButton("💬 جستجوی کاربران 🔮"), KeyboardButton("📍 افراد نزدیک 🛰")],
@@ -92,7 +88,7 @@ def profile_inline_keyboard(is_own_profile: bool = True, reported_id: int | None
 
 
 def settings_keyboard(next_gender_pref: str | None) -> InlineKeyboardMarkup:
-    """کیبورد صفحه‌ی تنظیمات — فعلاً فقط ترجیح جنسیت matching."""
+    """کیبورد صفحه‌ی تنظیمات؛ فعلاً فقط ترجیحِ جنسیتِ matching."""
     def _btn(value: str, label: str) -> InlineKeyboardButton:
         active = next_gender_pref == value
         return InlineKeyboardButton(
@@ -167,10 +163,9 @@ def delete_history_keyboard(user_a: int, user_b: int, session_id: int | None = N
 def end_chat_actions_keyboard(
     user_a: int, user_b: int, session_id: int | None, reported_id: int
 ) -> InlineKeyboardMarkup:
-    """کیبوردِ بعد از پایانِ چت — شاملِ دکمه‌ی پاک‌کردنِ تاریخچه و
-    دکمه‌ی گزارشِ همین گفتگو. reported_id یعنی طرفِ مقابلِ همون کاربری
-    که این کیبورد رو می‌بینه (پس این کیبورد باید جدا برای هر دو نفر
-    ساخته بشه، نه یک کیبوردِ یکسان برای هر دو طرف)."""
+    """کیبوردِ بعد از پایانِ چت، با دکمه‌ی پاک‌کردنِ تاریخچه و گزارشِ همین
+    گفتگو. reported_id یعنی طرفِ مقابلِ همون کاربری که این کیبورد رو
+    می‌بینه، پس باید جدا برای هر دو نفر ساخته بشه، نه یه کیبوردِ مشترک."""
     session_part = session_id if session_id is not None else "none"
     return InlineKeyboardMarkup(
         [
@@ -249,7 +244,7 @@ _PROVINCES = [
 
 
 def province_keyboard() -> InlineKeyboardMarkup:
-    """کیبورد انتخاب استان — ۳ تا در هر ردیف."""
+    """کیبورد انتخاب استان، ۳ تا در هر ردیف."""
     rows = []
     for i in range(0, len(_PROVINCES), 3):
         row = [
@@ -289,12 +284,10 @@ def city_keyboard(province: str, page: int = 0) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(rows)
 
 
-# ---------------------------------------------------------------------------
 # پروفایلِ عمومی (/user_<code>) و سیستمِ واکنش
-# ---------------------------------------------------------------------------
 def public_profile_keyboard(target_id: int, reactions_enabled: bool) -> InlineKeyboardMarkup:
-    """زیرِ پروفایلی که با /user_<code> باز می‌شه — قابلِ‌دیدن حتی بدونِ
-    اینکه دو نفر توی چتِ فعال باشن."""
+    """زیرِ پروفایلی که با /user_<code> باز می‌شه؛ حتی وقتی دو نفر توی
+    چتِ فعال نیستن هم دیده می‌شه."""
     rows = [
         [
             InlineKeyboardButton("🚩 گزارش پروفایل", callback_data=f"profilereport:{target_id}"),
@@ -309,9 +302,8 @@ def public_profile_keyboard(target_id: int, reactions_enabled: bool) -> InlineKe
 
 
 def view_chat_request_keyboard(request_id: str) -> InlineKeyboardMarkup:
-    """نوتیفِ اولیه‌ی درخواستِ چت — فقط یه دکمه‌ی «مشاهده» داره تا هویتِ
-    درخواست‌کننده (حتی شناسه‌ش) تا قبل از باز کردنِ عمدیِ گیرنده افشا
-    نشه."""
+    """نوتیفِ اولیه‌ی درخواستِ چت؛ فقط یه دکمه‌ی «مشاهده» داره تا هویتِ
+    درخواست‌کننده قبل از اینکه گیرنده عمداً بازش کنه، افشا نشه."""
     return InlineKeyboardMarkup(
         [[InlineKeyboardButton("👀 مشاهده درخواست چت", callback_data=f"chatreqview:{request_id}")]]
     )

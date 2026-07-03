@@ -49,7 +49,7 @@ async def test_deduct_coins_insufficient_balance_returns_none_and_does_not_chang
 
 
 async def test_deduct_coins_exact_balance_is_allowed(make_user):
-    """کاربر دقیقاً به‌اندازه‌ی هزینه سکه داره — باید مجاز باشه (نه فقط بیشتر)."""
+    """کاربر دقیقاً به‌اندازه‌ی هزینه سکه داره، باید مجاز باشه نه فقط وقتی بیشتر داره."""
     user = await make_user(coins=2)
 
     new_balance = await db.deduct_coins(user.id, 2, "test_reason")
@@ -85,8 +85,8 @@ async def test_refund_coins_unknown_user_returns_none():
 
 
 async def test_deduct_then_refund_round_trip_restores_balance(make_user):
-    """دقیقاً سناریوی واقعیِ درخواستِ چت: کسر در لحظه‌ی ارسال، بازگشتِ
-    کامل در صورتِ رد/انقضا — موجودی باید دقیقاً به حالتِ اول برگرده."""
+    """شبیهِ سناریوی درخواستِ چت: کسر در لحظه‌ی ارسال، و برگشتِ کامل اگه
+    رد یا منقضی بشه؛ موجودی باید دقیقاً به حالتِ اول برگرده."""
     user = await make_user(coins=10)
 
     balance_after_deduct = await db.deduct_coins(user.id, 2, "chat_request_cost")

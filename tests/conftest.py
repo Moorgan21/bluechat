@@ -75,11 +75,10 @@ async def make_user():
 
 @pytest.fixture(autouse=True)
 async def _clean_test_redis():
-    """قبل و بعد از هر تست، دیتابیسِ Redisِ تستی (index ۱۵) رو کاملاً
-    خالی می‌کنه — چون این DB منحصراً برای تسته و چیزِ دیگه‌ای توش
-    نگه‌داری نمی‌شه، flushdb اینجا کاملاً امنه (برخلافِ DB ۰ی پروداکشن).
-    disconnect بعد از هر تست هم برای همون دلیلِ event-loop-per-test
-    لازمه (نگاه کن به _dispose_db_engine_after_test)."""
+    """قبل و بعد از هر تست، دیتابیسِ Redisِ تستی (index ۱۵) رو کاملاً خالی
+    می‌کنه. چون این DB منحصراً برای تسته، flushdb اینجا امنه (برخلافِ DB
+    ۰ی پروداکشن). disconnect بعد از هر تست هم به همون دلیلِ
+    event-loop-per-test لازمه، نگاه کن به _dispose_db_engine_after_test."""
     await rc.r.flushdb()
     yield
     await rc.r.flushdb()

@@ -54,7 +54,7 @@ async def handle_settings_callback(update: Update, context: ContextTypes.DEFAULT
     parts = query.data.split(":", 2)
     if len(parts) != 3 or parts[1] != "next_gender":
         return
-    value = parts[2]  # "male" | "female" | "any" — "any" ذخیره می‌شه (نه None) تا از «هنوز تنظیم نشده» متمایز بشه
+    value = parts[2]  # "male" | "female" | "any"، خودِ "any" ذخیره می‌شه نه None تا از حالتِ «هنوز تنظیم نشده» جدا باشه
     await update_next_gender_pref(query.from_user.id, value)
     # نمایش مجدد با مقدار جدید
     async with async_session() as session:

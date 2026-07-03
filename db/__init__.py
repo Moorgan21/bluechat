@@ -13,17 +13,14 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-"""
-لایه‌ی دیتابیس — این پکیج قبلاً یه فایلِ تکیِ ۷۵۱ خطی (db.py) بود؛ برای
-خوانایی، به ۳ ماژول بر اساسِ مسئولیت شکسته شده:
+"""لایه‌ی دیتابیس. این پکیج قبلاً یه فایلِ ۷۵۱ خطیِ تکی (db.py) بود و
+برای خوانایی به ۳ تا شکسته شده: connections.py (engine/session/Base و
+init_db)، models.py (enumها و کلاس‌های ORM) و queries.py (توابعِ async
+که روی مدل‌ها کار می‌کنن).
 
-    connections.py — engine/session/Base و init_db()
-    models.py       — enumها و کلاس‌های ORM (جدول‌ها)
-    queries.py       — توابعِ async که روی مدل‌ها کار می‌کنن
-
-این فایل همه‌چیزِ لازم رو دوباره export می‌کنه تا کدِ بقیه‌ی پروژه (که
-همه‌جا با `from db import X, Y, Z` یا `db.X` صداش می‌زنه) بدونِ هیچ
-تغییری کار کنه — این یه تقسیمِ داخلی‌ست، نه تغییرِ API.
+این __init__ همه‌چیز رو دوباره export می‌کنه تا بقیه‌ی پروژه که با
+`from db import X, Y, Z` یا `db.X` صداش می‌زنه بدونِ تغییر کار کنه؛ این
+فقط یه تقسیمِ داخلیه، نه تغییرِ API.
 """
 
 from .connections import (

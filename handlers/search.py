@@ -13,13 +13,12 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-"""
-هندلرهای بخش «جستجوی کاربران» — matching هدفمند بر اساس فیلترهای
-جنسیت/سن، به‌جای matching کاملاً تصادفی در chat.py.
+"""هندلرهای «جستجوی کاربران»: matching هدفمند با فیلترِ جنسیت/سن، برخلافِ
+matching کاملاً تصادفیِ chat.py.
 
-فیلترها در context.user_data نگه داشته می‌شن (per-session، ساده و کافی
-برای این مقیاس). خودِ matching هم‌چنان از صف Redis استفاده می‌کنه ولی
-این‌بار قبل از جفت‌کردن، پروفایل کاندیدا از Postgres چک می‌شه.
+فیلترها توی context.user_data می‌مونن (per-session، برای این مقیاس
+کافیه). matching هنوز از صفِ Redis استفاده می‌کنه، فقط قبل از جفت‌کردن
+پروفایلِ کاندیدا از Postgres چک می‌شه.
 """
 
 from sqlalchemy import select
@@ -172,7 +171,7 @@ async def run_search(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
                 matched_id = matches[0].id
 
     if matched_id is not None:
-        # dequeue اتمیکه (ZREM): فقط یک کوروتین True می‌گیره — جلوگیری از double-claim
+        # dequeue با ZREM اتمیکه، فقط یه کوروتین True می‌گیره پس double-claim نمی‌شه
         if not await rc.dequeue(matched_id):
             matched_id = None
         elif await rc.get_partner(matched_id) is not None:

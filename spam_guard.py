@@ -13,9 +13,7 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-"""
-سیستم آنتی‌اسپم — rate limiting لغزنده (sliding window) با Redis
-"""
+"""سیستم آنتی‌اسپم، rate limiting لغزنده (sliding window) با Redis."""
 
 import os
 import time
@@ -49,24 +47,20 @@ _KEY_FLOOD = "bluechat:spam_flood:{user_id}"
 
 class SpamResult(Enum):
     ALLOWED        = auto()   # مجاز
-    JUST_BLOCKED   = auto()   # همین الان بلاک شد — یه پیام هشدار بفرست
-    ALREADY_BLOCKED = auto()  # قبلاً بلاک بود — سکوت کامل (silent drop)
+    JUST_BLOCKED   = auto()   # همین الان بلاک شد، یه هشدار بفرست
+    ALREADY_BLOCKED = auto()  # از قبل بلاک بود، سکوت کن (silent drop)
 
 
 async def _sliding_window(key: str, limit: int, window: int) -> bool:
-    """
-    sliding window rate limiter.
-    هر بار ZREMRANGEBYSCORE فراخوانی می‌شه تا timestamp های خارج
-    از پنجره پاک بشن و Redis رم بیهوده نگه نداره.
-    True = مجاز، False = تجاوز از سقف.
-    """
+    """sliding window با Redis. هر بار قدیمی‌ترها رو پاک می‌کنیم که رم
+    بیهوده مصرف نشه. True یعنی مجاز، False یعنی از سقف رد شده."""
     now = time.time()
     cutoff = now - window
     async with r.pipeline(transaction=True) as pipe:
-        pipe.zremrangebyscore(key, "-inf", cutoff)   # پاک‌سازی قدیمی‌ها
-        pipe.zadd(key, {str(now): now})               # ثبت timestamp جدید
-        pipe.zcard(key)                               # شمارش پنجره فعلی
-        pipe.expire(key, window + 1)                  # TTL خودکار برای کلید
+        pipe.zremrangebyscore(key, "-inf", cutoff)   # قدیمی‌ها رو پاک کن
+        pipe.zadd(key, {str(now): now})               # timestamp جدید
+        pipe.zcard(key)                               # شمارش پنجره
+        pipe.expire(key, window + 1)                  # TTL خودکار
         _, _, count, _ = await pipe.execute()
     return count <= limit
 
@@ -81,12 +75,9 @@ async def _block_user(user_id: int) -> None:
 
 
 async def check_message(user_id: int) -> SpamResult:
-    """
-    بررسی پیام متنی/مدیا.
-    ALLOWED        → ادامه بده
-    JUST_BLOCKED   → یه هشدار بفرست، بعد drop کن
-    ALREADY_BLOCKED → بی‌صدا drop کن (silent drop)
-    """
+    """بررسی پیام متنی/مدیا. سه حالت داره: ALLOWED (ادامه بده)،
+    JUST_BLOCKED (یه هشدار بفرست بعد drop کن)، ALREADY_BLOCKED (بی‌صدا
+    drop کن)."""
     if await is_blocked(user_id):
         return SpamResult.ALREADY_BLOCKED
 
@@ -105,10 +96,7 @@ async def check_message(user_id: int) -> SpamResult:
 
 
 async def check_command(user_id: int) -> SpamResult:
-    """
-    بررسی دستور یا callback.
-    همان سه حالت بالا.
-    """
+    """بررسی دستور یا callback. همون سه حالت بالا."""
     if await is_blocked(user_id):
         return SpamResult.ALREADY_BLOCKED
 

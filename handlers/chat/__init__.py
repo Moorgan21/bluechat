@@ -13,20 +13,16 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-"""
-هندلرهای هسته‌ی چت ناشناس — این پکیج قبلاً یه فایلِ تکیِ ۸۰۰ خطی
-(handlers/chat.py) بود؛ برای نگه‌داشتنِ خوانایی، به ۴ ماژولِ کوچیک‌تر
-بر اساسِ مسئولیت شکسته شده:
+"""هندلرهای هسته‌ی چت ناشناس. این پکیج قبلاً یه فایلِ ۸۰۰ خطیِ تکی
+(handlers/chat.py) بود و برای خوانایی به ۴ تا شکسته شده: matching.py
+(انتخاب جنسیت، صف‌بندی، matching)، session.py (پایانِ چت، تاییدِ پایان،
+ثبتِ سشن)، relay.py (انتقالِ پیام/ویرایش/ریکشن بین دو طرف) و extras.py
+(پروفایلِ طرفِ مقابل، چتِ امن، پاک‌سازیِ تاریخچه).
 
-    matching.py  — انتخاب جنسیت، صف‌بندی، matching، timeout صف
-    session.py   — پایانِ چت (/stop, /next)، تاییدِ پایان، ثبتِ سشن
-    relay.py     — انتقالِ پیام/ویرایش/ریکشن بینِ دو طرف
-    extras.py    — پروفایلِ طرفِ مقابل، چتِ امن، پاک‌سازیِ دوطرفه‌ی تاریخچه
-
-این فایل همه‌چیزِ لازم رو دوباره export می‌کنه تا بقیه‌ی کد (مثلِ
-main.py که با `chat.stop_chat`، `chat.relay_message` و... صداش می‌زنه،
-یا handlers/search.py که مستقیماً `from handlers.chat import try_match`
-می‌کنه) بدونِ هیچ تغییری کار کنه — این یه تقسیمِ داخلی‌ست، نه تغییرِ API.
+این __init__ همه‌چیز رو دوباره export می‌کنه تا main.py و
+handlers/search.py که با `chat.stop_chat`، `chat.relay_message` یا
+`from handlers.chat import try_match` صداش می‌زنن، بدونِ تغییر کار کنن؛
+این فقط یه تقسیمِ داخلیه، نه تغییرِ API.
 """
 
 from .extras import (

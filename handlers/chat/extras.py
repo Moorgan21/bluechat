@@ -32,8 +32,7 @@ logger = logging.getLogger(__name__)
 
 
 async def show_partner_profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """هندلر دکمه‌ی «👤 مشاهده پروفایل طرف مقابل» — فقط حین یک گفتگوی
-    فعال کار می‌کنه."""
+    """هندلر دکمه‌ی «👤 مشاهده پروفایل طرف مقابل»؛ فقط حینِ یه گفتگوی فعال کار می‌کنه."""
     from handlers.profile import GENDER_LABELS
 
     user_id = update.effective_user.id
@@ -91,8 +90,8 @@ async def show_partner_profile(update: Update, context: ContextTypes.DEFAULT_TYP
 
 
 async def toggle_secure_chat_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """هندلر دکمه‌ی «🔒 چت امن» — پیام‌ها رو با protect_content ارسال
-    می‌کنه تا فوروارد و ذخیره‌سازی غیرممکن بشه."""
+    """هندلر دکمه‌ی «🔒 چت امن»؛ پیام‌ها رو با protect_content می‌فرسته که
+    فوروارد و ذخیره‌سازی غیرممکن بشه."""
     user_id = update.effective_user.id
     partner_id = await rc.get_partner(user_id)
 

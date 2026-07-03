@@ -13,9 +13,7 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-"""
-پیام‌های ناشناس — لینک ناشناس مستقیم
-"""
+"""پیام‌های ناشناس از طریق لینکِ ناشناسِ مستقیم."""
 
 import logging
 
@@ -62,11 +60,11 @@ async def send_anon_note(
 async def send_direct_msg(
     owner_id: int, sender_id: int, update: Update, context: ContextTypes.DEFAULT_TYPE
 ) -> None:
-    """پیام دایرکت — شناسه‌ی عمومی فرستنده (/user_<code>) به مقصد نشون
-    داده می‌شه. هر پیامِ دایرکت rc.DIRECT_MSG_COIN_COST سکه هزینه داره؛
-    این سکه در لحظه‌ی ارسال کسر می‌شه، مستقل از اینکه مقصد پیام رو
-    ببینه یا نه (برخلافِ پیامِ ناشناس که رایگانه). در صورت بلاک‌بودن،
-    بی‌سروصدا رد می‌شه (بدونِ کسرِ سکه، چون پیام اصلاً تحویل داده
+    """پیام دایرکت؛ شناسه‌ی عمومیِ فرستنده (/user_<code>) به مقصد نشون
+    داده می‌شه. هر پیام rc.DIRECT_MSG_COIN_COST سکه هزینه داره و همون
+    لحظه کسر می‌شه، چه مقصد ببینتش چه نه (برخلافِ پیامِ ناشناس که
+    رایگانه). اگه فرستنده بلاک شده باشه، بی‌سروصدا رد می‌شه بدونِ کسرِ
+    سکه چون پیام اصلاً تحویل داده
     نمی‌شه)."""
     from telegram import InlineKeyboardButton, InlineKeyboardMarkup
     from db import User, async_session, deduct_coins
@@ -104,9 +102,8 @@ async def send_direct_msg(
 
 
 async def handle_view_note(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """هندلر دکمه‌ی «👀 مشاهده» زیر نوتیف پیام دایرکت — پیام اصلی رو
-    کپی می‌کنه، به فرستنده خبر سین می‌ده، و دکمه‌های پاسخ/بلاک رو
-    نمایش می‌ده."""
+    """هندلر دکمه‌ی «👀 مشاهده» زیر نوتیف پیام دایرکت؛ پیام اصلی رو کپی
+    می‌کنه، به فرستنده خبرِ سین می‌ده و دکمه‌های پاسخ/بلاک رو نشون می‌ده."""
     query = update.callback_query
     await query.answer()
 
@@ -151,8 +148,8 @@ async def handle_view_note(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
 
 async def handle_direct_msg_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """هندلر دکمه‌ی «📩 پیام دایرکت» زیر پروفایل عمومی — کاربر رو وارد
-    state نوشتن پیام دایرکت می‌کنه. برخلاف پیام ناشناس، شناسه‌ی عمومی
+    """هندلر دکمه‌ی «📩 پیام دایرکت» زیر پروفایل عمومی؛ کاربر رو وارد state
+    نوشتن پیام دایرکت می‌کنه. برخلاف پیام ناشناس، شناسه‌ی عمومیِ
     فرستنده به مقصد نشون داده می‌شه."""
     query = update.callback_query
     await query.answer()
@@ -206,9 +203,8 @@ async def handle_reply_button(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 
 async def handle_cancel_reply_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """هندلر دکمه‌ی «❌ لغو پاسخ» — اگه صاحب لینک وسطِ نوشتنِ پاسخ پشیمون
-    بشه، این state رو پاک می‌کنه که پیامِ بعدیش دیگه به‌عنوان پاسخ
-    ارسال نشه."""
+    """هندلر دکمه‌ی «❌ لغو پاسخ»؛ اگه صاحب لینک وسطِ نوشتنِ پاسخ پشیمون شه
+    این state رو پاک می‌کنه که پیامِ بعدیش دیگه پاسخ حساب نشه."""
     query = update.callback_query
     await query.answer()
 
@@ -234,10 +230,10 @@ async def handle_block_button(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 
 async def handle_pending_reply_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
-    """اگه صاحب لینک منتظر نوشتنِ متنِ پاسخ به یک پیام نوتیفی بود، این
-    پیامش رو مستقیم (بدون صف‌کردن) به فرستنده‌ی اصلی relay می‌کنه —
-    چون این‌بار طرف مقابل منتظر جواب یک پیام مشخصه، نه در حال باز کردن
-    پیام‌های جدید. خروجی True یعنی مصرف شد."""
+    """اگه صاحب لینک منتظر نوشتنِ پاسخِ یه پیام نوتیفی بود، پیامش رو
+    مستقیم به فرستنده‌ی اصلی relay می‌کنه، چون این‌بار طرف مقابل منتظرِ
+    جوابِ یه پیام مشخصه نه در حالِ باز کردنِ پیام‌های جدید. خروجی True
+    یعنی مصرف شد."""
     owner_id = update.effective_user.id
     note_id = await rc.pop_awaiting_reply(owner_id)
     if note_id is None:

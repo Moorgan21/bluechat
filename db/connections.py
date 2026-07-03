@@ -13,29 +13,22 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-"""
-اتصال به دیتابیس (PostgreSQL + PostGIS با SQLAlchemy async)
---------------------------------------------------------------
-نیازمندی‌ها:
-    pip install sqlalchemy[asyncio] asyncpg geoalchemy2
+"""اتصال به Postgres + PostGIS با SQLAlchemy async.
 
-⚠️ باید پسوند PostGIS روی دیتابیستون فعال باشه (یک‌بار، دستی):
-    CREATE EXTENSION IF NOT EXISTS postgis;
-این دستور نیاز به دسترسی superuser داره؛ init_db() این extension رو
-خودکار فعال می‌کنه (اگه یوزر دیتابیس دسترسی کافی داشته باشه).
+نیاز به `pip install sqlalchemy[asyncio] asyncpg geoalchemy2`.
 
-تنظیم اتصال با متغیر محیطی:
-    export DATABASE_URL="postgresql+asyncpg://user:pass@host:5432/bluechat"
+پسوند PostGIS باید روی دیتابیس فعال باشه (`CREATE EXTENSION IF NOT
+EXISTS postgis;`) - نیاز به دسترسی superuser داره، ولی init_db() خودش
+تلاش می‌کنه فعالش کنه اگه یوزر دیتابیس دسترسی کافی داشته باشه.
 
-اگه از ایمیج رسمی postgres:16 استفاده می‌کنی، برای داشتن PostGIS باید
-ایمیج postgis/postgis رو به‌جاش بگیری:
+اتصال با env var به اسم DATABASE_URL تنظیم می‌شه. با ایمیج رسمی
+postgres:16 پوستگیس نداری؛ باید postgis/postgis:16-3.4 رو بگیری:
     docker run -d --name bluechat-pg -e POSTGRES_USER=bluechat \
       -e POSTGRES_PASSWORD=bluechat -e POSTGRES_DB=bluechat \
       -p 5432:5432 postgis/postgis:16-3.4
 
-اگه از یه Postgres مشترک با پروژه‌های دیگه روی همون سرور استفاده می‌کنی،
-فقط یه دیتابیس/اسکیمای جدا (مثلاً `bluechat`) براش بساز که تداخلی با
-جداول پروژه‌های دیگه نداشته باشه.
+اگه سرور Postgres رو با پروژه‌های دیگه شریک می‌شی، یه دیتابیس/اسکیمای
+جدا (مثلاً `bluechat`) بساز که جداولش قاطی نشه.
 """
 
 import os
@@ -55,9 +48,9 @@ _MAX_OVERFLOW = int(os.environ.get("DB_MAX_OVERFLOW", "40"))
 engine = create_async_engine(DATABASE_URL, echo=False, pool_size=_POOL_SIZE, max_overflow=_MAX_OVERFLOW)
 async_session = async_sessionmaker(engine, expire_on_commit=False)
 
-# اگه READ_DATABASE_URL تنظیم شده باشه (یعنی read replica داریم)، یه engine
-# جداگانه برای query های خواندنی می‌سازیم تا بار روی primary کمتر بشه.
-# اگه تنظیم نشده باشه، همون engine اصلی استفاده می‌شه (بدون تغییر رفتار).
+# اگه READ_DATABASE_URL ست شده (یعنی read replica داریم)، یه engine جدا
+# برای query های خواندنی می‌سازیم که بار primary کم بشه، وگرنه همون
+# engine اصلی رو به اشتراک می‌ذاریم.
 _read_engine = (
     create_async_engine(READ_DATABASE_URL, echo=False, pool_size=_POOL_SIZE, max_overflow=_MAX_OVERFLOW)
     if READ_DATABASE_URL != DATABASE_URL
@@ -71,7 +64,7 @@ class Base(DeclarativeBase):
 
 
 async def init_db() -> None:
-    from . import models  # noqa: F401  # side-effect: مدل‌ها رو قبل از create_all رجیستر می‌کنه
+    from . import models  # noqa: F401  # باید قبل از create_all ایمپورت بشه تا مدل‌ها رجیستر بشن
 
     async with engine.begin() as conn:
         await conn.execute(text("CREATE EXTENSION IF NOT EXISTS postgis"))
