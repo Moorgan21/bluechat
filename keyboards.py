@@ -140,6 +140,21 @@ def room_gender_keyboard() -> InlineKeyboardMarkup:
     )
 
 
+def room_join_gender_keyboard() -> InlineKeyboardMarkup:
+    """قبل از عضویت می‌پرسه دنبالِ چه نوع اتاقی می‌گرده. پیشوندش
+    (roomjoingender) عمداً از roomgender جداست تا با قدمِ اولِ فلوی
+    ساختِ اتاق قاطی نشه."""
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton("👩 دخترونه", callback_data="roomjoingender:female"),
+                InlineKeyboardButton("👨 پسرونه", callback_data="roomjoingender:male"),
+            ],
+            [InlineKeyboardButton("🤷 فرقی نداره", callback_data="roomjoingender:any")],
+        ]
+    )
+
+
 def room_capacity_keyboard() -> InlineKeyboardMarkup:
     """قدمِ دوم از ساختِ اتاق: ظرفیت. دکمه‌ی «آزاد» هم فنیاً همون ۵
     نفره، فقط برای کسی که نمی‌خواد رو یه عدد فکر کنه."""

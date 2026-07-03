@@ -23,7 +23,7 @@ get_or_create_user که برای استفاده‌ی مشترک بینِ چند 
 from datetime import datetime
 
 from geoalchemy2.functions import ST_MakePoint, ST_SetSRID
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .connections import async_session
@@ -40,6 +40,7 @@ from .models import (
     Report,
     ReportVerdict,
     RoomGenderPref,
+    RoomStatus,
     User,
     Warning,
 )
@@ -373,6 +374,110 @@ async def create_chat_room(
         await session.commit()
         await session.refresh(room)
         return room, None
+
+
+async def join_chat_room(user_id: int, room_id: int) -> tuple[ChatRoom | None, str | None]:
+    """کاربر رو به یه اتاقِ مشخص ملحق می‌کنه. خروجی: (room, None) در
+    موفقیت، یا (None, error_code) که یکی از "not_found",
+    "room_not_open", "room_full", "has_active_room" است.
+
+    برخلافِ create_chat_room، اینجا سکه کسر نمی‌شه؛ چرخه‌ی
+    پرداخت/بازگشتِ سکه‌ی جستجو کاملاً توسطِ لایه‌ی هندلر (که هم مسیرِ
+    claimِ فوری هم مسیرِ صف/تایم‌اوت رو می‌بینه) مدیریت می‌شه، نه اینجا.
+
+    قفل اول روی ردیفِ room گرفته می‌شه (نه user)، چون رقابتِ اصلی سرِ
+    ظرفیتِ همون اتاقه؛ دو تا claim هم‌زمان برای یه اتاق پشتِ سرِ هم صف
+    می‌کشن و هرکدوم با دیدِ تازه (شمارشِ اعضای به‌روز) تصمیم می‌گیرن."""
+    async with async_session() as session:
+        room_result = await session.execute(
+            select(ChatRoom).where(ChatRoom.id == room_id).with_for_update()
+        )
+        room = room_result.scalar_one_or_none()
+        if room is None:
+            return None, "not_found"
+        if room.status != RoomStatus.open:
+            return None, "room_not_open"
+
+        user_result = await session.execute(
+            select(User).where(User.id == user_id).with_for_update()
+        )
+        user = user_result.scalar_one_or_none()
+        if user is None:
+            return None, "not_found"
+        if user.active_room_id is not None:
+            return None, "has_active_room"
+
+        member_count = (
+            await session.execute(
+                select(func.count()).select_from(ChatRoomMember).where(ChatRoomMember.room_id == room_id)
+            )
+        ).scalar_one()
+        if member_count >= room.capacity:
+            return None, "room_full"
+
+        session.add(ChatRoomMember(room_id=room_id, user_id=user_id))
+        user.active_room_id = room_id
+
+        await session.commit()
+        await session.refresh(room)
+        return room, None
+
+
+async def get_chat_room(room_id: int) -> ChatRoom | None:
+    async with async_session() as session:
+        return await session.get(ChatRoom, room_id)
+
+
+async def find_open_room_for_join(desired_gender: str) -> ChatRoom | None:
+    """قدیمی‌ترین اتاقِ بازِ دارایِ ظرفیتِ خالی که با desired_gender
+    سازگاره رو برمی‌گردونه (یا None). سازگاری دوطرفه‌ست: desired_gender
+    == "any" هر نوع اتاقی رو می‌پذیره، و room.gender_pref == "any" هر
+    جستجوگری رو می‌پذیره؛ وگرنه باید دقیقاً یکی باشن.
+
+    این فقط یه پیشنهاده، نه ادعای قطعی — claimِ واقعی با join_chat_room
+    و قفلِ FOR UPDATE انجام می‌شه؛ ممکنه بینِ این کوئری و claim یکی
+    دیگه زودتر برسه، که در اون صورت لایه‌ی هندلر باید صف رو امتحان کنه."""
+    if desired_gender == "any":
+        compatible_prefs = [RoomGenderPref.male, RoomGenderPref.female, RoomGenderPref.any]
+    else:
+        compatible_prefs = [RoomGenderPref(desired_gender), RoomGenderPref.any]
+
+    async with async_session() as session:
+        member_counts = (
+            select(ChatRoomMember.room_id, func.count().label("cnt"))
+            .group_by(ChatRoomMember.room_id)
+            .subquery()
+        )
+        result = await session.execute(
+            select(ChatRoom)
+            .outerjoin(member_counts, member_counts.c.room_id == ChatRoom.id)
+            .where(ChatRoom.status == RoomStatus.open)
+            .where(ChatRoom.gender_pref.in_(compatible_prefs))
+            .where(func.coalesce(member_counts.c.cnt, 0) < ChatRoom.capacity)
+            .order_by(ChatRoom.created_at.asc())
+            .limit(1)
+        )
+        return result.scalar_one_or_none()
+
+
+async def list_open_room_ids_with_spare_capacity() -> list[int]:
+    """برای سیفتی‌نتِ دوره‌ای: id همه‌ی اتاق‌های بازی که هنوز جا دارن.
+    شمارشِ اینجا صرفاً برای تصمیمِ «ارزششو داره دوباره تلاش کنیم یا نه»
+    است، نه یه مرزِ تراکنشی؛ enforcementِ واقعیِ ظرفیت همون قفلِ
+    join_chat_room است."""
+    async with async_session() as session:
+        member_counts = (
+            select(ChatRoomMember.room_id, func.count().label("cnt"))
+            .group_by(ChatRoomMember.room_id)
+            .subquery()
+        )
+        result = await session.execute(
+            select(ChatRoom.id)
+            .outerjoin(member_counts, member_counts.c.room_id == ChatRoom.id)
+            .where(ChatRoom.status == RoomStatus.open)
+            .where(func.coalesce(member_counts.c.cnt, 0) < ChatRoom.capacity)
+        )
+        return [row[0] for row in result.all()]
 
 
 async def ban_user(user_id: int) -> None:

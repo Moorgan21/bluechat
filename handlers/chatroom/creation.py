@@ -42,6 +42,8 @@ async def show_room_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
 
 async def room_menu_callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    from . import matching  # ایمپورتِ دیرهنگام برای جلوگیری از چرخه؛ matching هم از creation ایمپورت می‌کنه
+
     query = update.callback_query
     prefix, _, value = query.data.partition(":")
 
@@ -49,11 +51,14 @@ async def room_menu_callback_router(update: Update, context: ContextTypes.DEFAUL
         await query.answer()
         await _start_create_flow(update, context)
     elif prefix == "roommenu" and value == "join":
-        await query.answer("این قابلیت به‌زودی اضافه می‌شه.", show_alert=True)
+        await query.answer()
+        await matching.start_join_flow(update, context)
     elif prefix == "roomgender":
         await _handle_gender_selected(update, context, value)
     elif prefix == "roomcap":
         await _handle_capacity_selected(update, context, value)
+    elif prefix == "roomjoingender":
+        await matching.handle_join_gender_selected(update, context, value)
 
 
 async def _start_create_flow(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -132,6 +137,13 @@ async def _handle_capacity_selected(update: Update, context: ContextTypes.DEFAUL
         f"ظرفیت: {room.capacity} نفر\n\n"
         "الان توی این اتاق تنها هستی؛ به محض این‌که یه نفر بهش ملحق بشه، بهت خبر می‌دیم."
     )
+
+    # trigger بعد از commitِ کاملِ ساختِ اتاق صدا زده می‌شه (نه داخلِ
+    # تراکنشِ create_chat_room)، چون claim خودش یه تراکنشِ FOR UPDATEِ
+    # جداست؛ تودرتو کردنشون قفلِ ردیفِ owner رو بی‌دلیل نگه می‌داشت.
+    from . import matching
+
+    await matching.try_fill_room_from_queue(room.id, context)
 
 
 async def _check_can_start_room_flow(user_id: int) -> str | None:

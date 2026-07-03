@@ -518,6 +518,78 @@ async def pop_expired_chat_requests(timeout_seconds: int = CHAT_REQUEST_TIMEOUT_
     return results
 
 
+# صفِ عضویتِ اتاقِ چت. برخلافِ matchingِ ۱به۱ (که هر دو طرف دنبالِ همون
+# کاری‌ن، پس چکِ لحظه‌ای موقعِ ورودِ نفرِ دوم کافیه)، اینجا «عرضه»
+# (ساختِ اتاق، یا آزادشدنِ جا) از یه اکشنِ کاملاً متفاوت میاد. برای
+# همین صفِ انتظار اینجا بر اساسِ فیلترِ خودِ جستجوگر باکت‌بندی می‌شه
+# (نه یه صفتِ ذاتیِ خودش مثلِ جنسیت)، و «عرضه» باید فعالانه بیاد این
+# صف رو چک کنه، نه اینکه جستجوگر منتظرِ notification بمونه.
+KEY_ROOM_JOIN_QUEUE_BY_GENDER = "bluechat:room_join_queue:{gender}"  # ZSET: user_id -> timestamp ورود
+
+ROOM_JOIN_TIMEOUT_SECONDS = 120  # ۲ دقیقه مهلت قبل از خروج خودکار و بازگشتِ سکه
+
+
+async def enqueue_room_join(user_id: int, desired_gender: str) -> None:
+    import time
+
+    key = KEY_ROOM_JOIN_QUEUE_BY_GENDER.format(gender=desired_gender)
+    await r.zadd(key, {str(user_id): time.time()})
+
+
+async def dequeue_room_join(user_id: int, desired_gender: str) -> bool:
+    key = KEY_ROOM_JOIN_QUEUE_BY_GENDER.format(gender=desired_gender)
+    count = await r.zrem(key, str(user_id))
+    return count > 0
+
+
+async def is_waiting_room_join(user_id: int) -> Optional[str]:
+    """اگه کاربر توی صفِ عضویتِ اتاقه، فیلترِ ذخیره‌شده‌ش رو برمی‌گردونه، وگرنه None."""
+    for gender in ("male", "female", "any"):
+        score = await r.zscore(KEY_ROOM_JOIN_QUEUE_BY_GENDER.format(gender=gender), str(user_id))
+        if score is not None:
+            return gender
+    return None
+
+
+def room_join_compatible_genders(room_gender_pref: str) -> list[str]:
+    """اتاقِ «any» همه‌ی باکت‌ها رو می‌پذیره؛ اتاقِ male/female فقط
+    همون باکت به‌علاوه‌ی باکتِ «any» (کسی که فرقی براش نداره)."""
+    if room_gender_pref == "any":
+        return ["male", "female", "any"]
+    return [room_gender_pref, "any"]
+
+
+async def peek_oldest_room_join_candidate(compatible_genders: list[str]) -> Optional[tuple[int, str]]:
+    """قدیمی‌ترینِ کاندیدای سازگار رو (بر اساسِ زمانِ ورود، فارغ از
+    اینکه تو کدوم باکته) برمی‌گردونه، بدونِ حذف از صف. حذفِ واقعی بعد
+    از claim (موفق یا ناموفق) با dequeue_room_join انجام می‌شه."""
+    best: tuple[int, str, float] | None = None
+    for gender in compatible_genders:
+        members = await r.zrange(
+            KEY_ROOM_JOIN_QUEUE_BY_GENDER.format(gender=gender), 0, 0, withscores=True
+        )
+        if members:
+            uid, score = members[0]
+            if best is None or score < best[2]:
+                best = (int(uid), gender, score)
+    return (best[0], best[1]) if best else None
+
+
+async def purge_stale_room_join_queue() -> int:
+    """ورودی‌های منقضی‌شده‌ی صفِ عضویتِ اتاق رو پاک می‌کنه (حفاظت در
+    برابرِ ریستارتِ ربات، مثلِ purge_stale_queue_entries برای صفِ ۱به۱)."""
+    import time
+
+    cutoff = time.time() - ROOM_JOIN_TIMEOUT_SECONDS
+    total = 0
+    for gender in ("male", "female", "any"):
+        removed = await r.zremrangebyscore(
+            KEY_ROOM_JOIN_QUEUE_BY_GENDER.format(gender=gender), "-inf", cutoff
+        )
+        total += removed
+    return total
+
+
 # --- صف جاب‌های AI (برای worker.py) ---
 KEY_AI_JOBS = "bluechat:ai_jobs"
 

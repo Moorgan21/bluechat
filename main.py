@@ -390,7 +390,12 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         await public_profile.reaction_settings_router(update, context)
     elif data.startswith("settings:"):
         await settings.handle_settings_callback(update, context)
-    elif data.startswith("roommenu:") or data.startswith("roomgender:") or data.startswith("roomcap:"):
+    elif (
+        data.startswith("roommenu:")
+        or data.startswith("roomgender:")
+        or data.startswith("roomcap:")
+        or data.startswith("roomjoingender:")
+    ):
         await chatroom.room_menu_callback_router(update, context)
     elif data == "generic:cancel":
         await update.callback_query.answer()
@@ -457,6 +462,14 @@ async def _purge_stale_queue_job(context: ContextTypes.DEFAULT_TYPE) -> None:
     removed = await rc.purge_stale_queue_entries()
     if removed:
         logger.info("پاکسازی صف: %d ورودی منقضی‌شده حذف شد.", removed)
+
+
+async def _room_join_sweep_job(context: ContextTypes.DEFAULT_TYPE) -> None:
+    """سیفتی‌نتِ صفِ عضویتِ اتاق: هر ۱ دقیقه دوباره تلاش می‌کنه صفِ
+    انتظار رو با اتاق‌های بازِ دارایِ ظرفیتِ خالی پر کنه، برای مواردی
+    که trigger بعد از ساختِ اتاق (یا بعداً ترک/اخراج) به هر دلیلی از
+    دست رفته باشه."""
+    await chatroom.sweep_room_join_queue(context)
 
 
 async def _expire_chat_requests_job(context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -526,6 +539,7 @@ def main() -> None:
 
     app.job_queue.run_repeating(_purge_old_messages_job, interval=60 * 60 * 24, first=60 * 5)
     app.job_queue.run_repeating(_purge_stale_queue_job, interval=60 * 3, first=30)
+    app.job_queue.run_repeating(_room_join_sweep_job, interval=60, first=40)
     app.job_queue.run_repeating(_expire_chat_requests_job, interval=30, first=30)
 
     app.job_queue.run_repeating(_update_metrics_job, interval=15, first=10)
