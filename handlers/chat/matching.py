@@ -182,6 +182,12 @@ async def start_chat(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         )
         return
 
+    if await rc.is_waiting_room_join(user_id) is not None:
+        await update.effective_message.reply_text(
+            "⚠️ الان منتظرِ پیدا شدنِ یه اتاقی. تا وقتی جستجوی اتاق تمومِ نشده، نمی‌تونی وارد چتِ ۱به۱ بشی."
+        )
+        return
+
     if await rc.get_partner(user_id) is not None:
         await update.effective_message.reply_text(
             "الان توی یه گفتگو هستی.", reply_markup=in_chat_reply_keyboard()
@@ -242,6 +248,12 @@ async def handle_desired_gender_callback(update: Update, context: ContextTypes.D
                 "⚠️ الان یه اتاقِ چتِ فعال داری. تا وقتی اونجایی، نمی‌تونی وارد چتِ ۱به۱ بشی."
             )
             return
+
+    if await rc.is_waiting_room_join(user_id) is not None:
+        await query.edit_message_text(
+            "⚠️ الان منتظرِ پیدا شدنِ یه اتاقی. تا وقتی جستجوی اتاق تمومِ نشده، نمی‌تونی وارد چتِ ۱به۱ بشی."
+        )
+        return
 
     if desired_gender is not None:
         new_balance = await deduct_coins(user_id, rc.CHAT_COIN_COST, "gender_search")

@@ -142,6 +142,12 @@ async def run_search(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         )
         return
 
+    if await rc.is_waiting_room_join(user_id) is not None:
+        await query.edit_message_text(
+            "⚠️ الان منتظرِ پیدا شدنِ یه اتاقی. تا وقتی جستجوی اتاق تمومِ نشده، نمی‌تونی وارد چتِ ۱به۱ بشی."
+        )
+        return
+
     if await rc.get_partner(user_id) is not None:
         await query.edit_message_text("الان توی یه گفتگو هستی.")
         return
