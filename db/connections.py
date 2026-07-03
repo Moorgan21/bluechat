@@ -73,3 +73,16 @@ async def init_db() -> None:
         await conn.execute(
             text("CREATE INDEX IF NOT EXISTS idx_users_location ON users USING GIST (location)")
         )
+        # create_all جدولِ users رو که از قبل هست دست نمی‌زنه، پس ستونِ
+        # جدیدِ active_room_id (اضافه‌شده برای اتاقِ چت) رو دستی اضافه
+        # می‌کنیم؛ روی نصبِ تازه هم بی‌ضرره چون create_all قبلش خودِ
+        # ستون رو تو تعریفِ اولیه‌ی جدول ساخته. ایندکسش هم به همین
+        # دلیل دستیه؛ اسمش هم‌راستا با نام‌گذاریِ خودکارِ SQLAlchemی
+        # برای index=True (ix_<table>_<column>) انتخاب شده تا روی
+        # نصبِ تازه با یه ایندکسِ تکراریِ هم‌معنی قاطی نشه.
+        await conn.execute(
+            text("ALTER TABLE users ADD COLUMN IF NOT EXISTS active_room_id INTEGER REFERENCES chat_rooms(id)")
+        )
+        await conn.execute(
+            text("CREATE INDEX IF NOT EXISTS ix_users_active_room_id ON users (active_room_id)")
+        )

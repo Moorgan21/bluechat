@@ -20,6 +20,14 @@ DO $$ BEGIN
     CREATE TYPE reportverdict AS ENUM ('pending', 'guilty', 'dismissed', 'no_history');
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
+DO $$ BEGIN
+    CREATE TYPE roomgenderpref AS ENUM ('male', 'female', 'any');
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+    CREATE TYPE roomstatus AS ENUM ('open', 'closed', 'deleted');
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
 -- -------------------------------------------------------
 -- users
 -- -------------------------------------------------------
@@ -90,6 +98,31 @@ CREATE TABLE IF NOT EXISTS chat_messages (
     content      TEXT,
     content_type VARCHAR(32) NOT NULL DEFAULT 'text',
     created_at   TIMESTAMP NOT NULL DEFAULT now()
+);
+
+-- -------------------------------------------------------
+-- chat_rooms
+-- -------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS chat_rooms (
+    id          SERIAL PRIMARY KEY,
+    owner_id    BIGINT NOT NULL,
+    gender_pref roomgenderpref NOT NULL,
+    capacity    INTEGER NOT NULL DEFAULT 5,
+    status      roomstatus NOT NULL DEFAULT 'open',
+    created_at  TIMESTAMP NOT NULL DEFAULT now()
+);
+
+-- -------------------------------------------------------
+-- chat_room_members
+-- -------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS chat_room_members (
+    id         SERIAL PRIMARY KEY,
+    room_id    INTEGER NOT NULL REFERENCES chat_rooms(id),
+    user_id    BIGINT NOT NULL,
+    joined_at  TIMESTAMP NOT NULL DEFAULT now(),
+    CONSTRAINT uq_room_member UNIQUE (room_id, user_id)
 );
 
 -- -------------------------------------------------------
@@ -183,3 +216,11 @@ CREATE TABLE IF NOT EXISTS reaction_logs (
     tag_label  VARCHAR(32) NOT NULL,
     created_at TIMESTAMP NOT NULL DEFAULT now()
 );
+
+-- -------------------------------------------------------
+-- users.active_room_id (اضافه‌شده بعداً؛ به همین خاطر ALTER نه CREATE،
+-- چون روی نصب‌های قدیمی جدولِ users از قبل بدونِ این ستون وجود داره)
+-- -------------------------------------------------------
+
+ALTER TABLE users ADD COLUMN IF NOT EXISTS active_room_id INTEGER REFERENCES chat_rooms(id);
+CREATE INDEX IF NOT EXISTS ix_users_active_room_id ON users (active_room_id);

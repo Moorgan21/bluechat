@@ -44,6 +44,18 @@ class Gender(str, enum.Enum):
     unset = "unset"
 
 
+class RoomGenderPref(str, enum.Enum):
+    male = "male"
+    female = "female"
+    any = "any"
+
+
+class RoomStatus(str, enum.Enum):
+    open = "open"
+    closed = "closed"
+    deleted = "deleted"
+
+
 class ReportReason(str, enum.Enum):
     spam = "spam"
     scam = "scam"
@@ -108,6 +120,15 @@ class User(Base):
     total_chats: Mapped[int] = mapped_column(Integer, default=0)
     total_reports_received: Mapped[int] = mapped_column(Integer, default=0)
 
+    # اتاقِ چتِ فعلاً فعالِ کاربر (owner یا عضو، فرقی نداره). خالی یعنی
+    # آزاده برای چتِ ۱به۱، ساختنِ اتاقِ جدید، یا عضوشدن در یه اتاق؛ هر
+    # کاربر در کل فقط می‌تونه یه اسلاتِ فعال داشته باشه. ایندکس داره چون
+    # فازِ عضویت/matching و پیداکردنِ owner برای ریدایرکت مرتب روش
+    # کوئری می‌زنن.
+    active_room_id: Mapped[int | None] = mapped_column(
+        ForeignKey("chat_rooms.id"), nullable=True, index=True
+    )
+
 
 class ChatSession(Base):
     """رکورد هر گفتگوی ناشناس، برای گزارش‌گیری/آمار و سیستم گزارش کاربر."""
@@ -140,6 +161,36 @@ class ChatMessage(Base):
     content: Mapped[str | None] = mapped_column(Text, nullable=True)  # متن پیام (اگه متنی بود)
     content_type: Mapped[str] = mapped_column(String(32), default="text")  # text/photo/voice/...
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+class ChatRoom(Base):
+    """اتاقِ چتِ گروهیِ دائمی (۲ تا ۵ نفر). owner_id مثلِ بقیه‌ی
+    ارجاع‌های کاربر توی این پروژه صرفاً BigInteger‌ه (بدونِ FK)؛ نقشِ
+    owner از همینجا تشخیص داده می‌شه، نه از یه فیلدِ جدا روی عضویت.
+    برخلافِ ChatMessage، متنِ پیام‌های اتاق اینجا ذخیره نمی‌شه (فعلاً
+    قضاوتِ AI برای اتاق‌ها نداریم)."""
+
+    __tablename__ = "chat_rooms"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    owner_id: Mapped[int] = mapped_column(BigInteger)
+    gender_pref: Mapped[RoomGenderPref] = mapped_column(Enum(RoomGenderPref))
+    capacity: Mapped[int] = mapped_column(Integer, default=5)  # ۲ تا ۵؛ پیش‌فرض آزاد تا ۵
+    status: Mapped[RoomStatus] = mapped_column(Enum(RoomStatus), default=RoomStatus.open)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+class ChatRoomMember(Base):
+    """عضویتِ یک کاربر در یک اتاق. یه ردیفِ جدا برای owner هم اینجا
+    هست (چون owner هم عضوِ اتاقِ خودشه)."""
+
+    __tablename__ = "chat_room_members"
+    __table_args__ = (UniqueConstraint("room_id", "user_id", name="uq_room_member"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    room_id: Mapped[int] = mapped_column(ForeignKey("chat_rooms.id"))
+    user_id: Mapped[int] = mapped_column(BigInteger)
+    joined_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
 
 class Warning(Base):
