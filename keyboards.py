@@ -220,6 +220,14 @@ def cancel_queue_keyboard() -> InlineKeyboardMarkup:
     )
 
 
+def cancel_room_join_keyboard() -> InlineKeyboardMarkup:
+    """زیرِ پیامِ «⏳ فعلاً اتاقِ خالی‌ای پیدا نشد...» — دقیقاً معادلِ
+    cancel_queue_keyboard برای صفِ عضویتِ اتاق."""
+    return InlineKeyboardMarkup(
+        [[InlineKeyboardButton("❌ لغو جستجوی اتاق", callback_data="roomcanceljoin")]]
+    )
+
+
 def gender_selection_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         [

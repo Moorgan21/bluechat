@@ -25,7 +25,7 @@ from .creation import (
     room_menu_callback_router,
     show_room_menu,
 )
-from .matching import sweep_room_join_queue
+from .matching import handle_cancel_room_join_button, sweep_room_join_queue
 from .relay import relay_room_edit, relay_room_message, toggle_secure_chat_button
 from .membership import leave_room_button
 from .moderation import (
@@ -40,6 +40,7 @@ __all__ = [
     "close_room_button",
     "delete_room_button",
     "delete_room_confirm_callback",
+    "handle_cancel_room_join_button",
     "leave_room_button",
     "purge_history_callback",
     "relay_room_edit",

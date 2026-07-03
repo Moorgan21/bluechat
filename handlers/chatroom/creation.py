@@ -203,17 +203,25 @@ async def _handle_capacity_selected(update: Update, context: ContextTypes.DEFAUL
 
 
 async def _check_can_start_room_flow(user_id: int) -> str | None:
-    """اگه کاربر آزاد نباشه (توی چتِ ۱به۱، صفِ انتظار، یا از قبل یه
-    اتاقِ فعال داره)، پیامِ فارسیِ دلیلش رو برمی‌گردونه؛ وگرنه None.
-    این فقط یه پیش‌چکِ UX برای فیدبکِ سریع و بدونِ کسرِ سکه‌ست، قبل از
-    شروعِ فلو؛ چکِ اتمیکِ واقعی (که TOCTOU بینِ این پیش‌چک و لحظه‌ی
-    commit رو می‌بنده) با _redis_conflict_check و پارامترِ
-    conflict_check داخلِ خودِ تراکنشِ create_chat_room/join_chat_room
-    انجام می‌شه."""
+    """اگه کاربر آزاد نباشه (توی چتِ ۱به۱، صفِ انتظارِ ۱به۱، صفِ
+    عضویتِ اتاق، یا از قبل یه اتاقِ فعال داره)، پیامِ فارسیِ دلیلش رو
+    برمی‌گردونه؛ وگرنه None. این فقط یه پیش‌چکِ UX برای فیدبکِ سریع و
+    بدونِ کسرِ سکه‌ست، قبل از شروعِ فلو؛ چکِ اتمیکِ واقعی (که TOCTOU
+    بینِ این پیش‌چک و لحظه‌ی commit رو می‌بنده) با _redis_conflict_check
+    و پارامترِ conflict_check داخلِ خودِ تراکنشِ
+    create_chat_room/join_chat_room انجام می‌شه.
+
+    چکِ is_waiting_room_join اینجا لازمه چون create_chat_room/
+    join_chat_room هیچ‌کدوم صفِ عضویتِ اتاق رو نمی‌بینن (فقط
+    active_room_id و conflict_checkِ ۱به۱ رو)؛ بدونش، کاربرِ منتظرِ
+    یه اتاق می‌تونست دوباره جستجو کنه یا حتی اتاقِ جدید بسازه و
+    بی‌سروصدا دوبار (یا بیشتر) سکه بده."""
     if await rc.get_partner(user_id) is not None:
         return "⚠️ الان توی یه گفتگوی ۱به۱ فعالی. اول اون رو تموم کن."
     if await rc.is_waiting(user_id):
         return "⚠️ الان توی صفِ انتظارِ چتِ ناشناسی. اول از اونجا خارج شو."
+    if await rc.is_waiting_room_join(user_id) is not None:
+        return "⚠️ همین الان منتظرِ پیدا شدنِ یه اتاقی. اول جستجوی فعلی رو لغو کن یا صبر کن تموم بشه."
     return None
 
 

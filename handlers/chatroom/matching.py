@@ -42,7 +42,12 @@ from db import (
     list_open_room_ids_with_spare_capacity,
     refund_coins,
 )
-from keyboards import in_room_reply_keyboard, main_reply_keyboard, room_join_gender_keyboard
+from keyboards import (
+    cancel_room_join_keyboard,
+    in_room_reply_keyboard,
+    main_reply_keyboard,
+    room_join_gender_keyboard,
+)
 from .creation import GENDER_LABELS_FA, _redis_conflict_check
 
 logger = logging.getLogger(__name__)
@@ -127,9 +132,44 @@ async def try_join_room(user_id: int, desired_gender: str, context: ContextTypes
         await context.bot.send_message(
             user_id,
             "⏳ فعلاً اتاقِ خالی‌ای پیدا نشد؛ به محضِ باز شدنِ یه جا بهت خبر می‌دم.",
+            reply_markup=cancel_room_join_keyboard(),
         )
     except TelegramError:
         logger.warning("امکان اطلاع‌رسانیِ صفِ عضویتِ اتاق به user_id=%s وجود نداشت.", user_id)
+
+
+async def handle_cancel_room_join_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """هندلر دکمه‌ی «❌ لغو جستجوی اتاق» زیرِ پیامِ صفِ انتظار؛ دقیقاً
+    معادلِ handle_cancel_queue_button برای ۱به۱. اگه کاربر همین الان
+    (مثلاً با trigger یا تایم‌اوت) از صف درومده باشه، فقط پیام رو پاک
+    می‌کنه، دوباره چیزی رو دست نمی‌زنه."""
+    query = update.callback_query
+    await query.answer()
+    user_id = query.from_user.id
+
+    desired_gender = await rc.is_waiting_room_join(user_id)
+    if desired_gender is None:
+        try:
+            await query.message.delete()
+        except TelegramError:
+            pass
+        return
+
+    await rc.dequeue_room_join(user_id, desired_gender)
+    _cancel_room_join_timeout_job(user_id, context)
+    await refund_coins(user_id, ROOM_JOIN_COST, "room_join_cancel_refund")
+
+    try:
+        await query.message.delete()
+    except TelegramError:
+        pass
+
+    try:
+        await context.bot.send_message(
+            user_id, "از صفِ عضویتِ اتاق خارج شدی و سکه‌ت برگشت.", reply_markup=main_reply_keyboard()
+        )
+    except TelegramError:
+        logger.warning("امکان اطلاع‌رسانیِ لغوِ صفِ عضویتِ اتاق به user_id=%s وجود نداشت.", user_id)
 
 
 async def _room_join_timeout_job(context: ContextTypes.DEFAULT_TYPE) -> None:

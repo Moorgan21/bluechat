@@ -435,6 +435,8 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         await chatroom.delete_room_confirm_callback(update, context)
     elif data.startswith("roompurge:"):
         await chatroom.purge_history_callback(update, context)
+    elif data == "roomcanceljoin":
+        await chatroom.handle_cancel_room_join_button(update, context)
     elif data == "generic:cancel":
         await update.callback_query.answer()
         context.user_data.pop("awaiting_note_target", None)
