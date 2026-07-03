@@ -32,6 +32,7 @@ from .extras import (
     toggle_secure_chat_button,
 )
 from .matching import (
+    check_room_conflict,
     handle_desired_gender_callback,
     start_chat,
     try_match,
@@ -54,6 +55,7 @@ __all__ = [
     "offer_history_deletion",
     "show_partner_profile",
     "toggle_secure_chat_button",
+    "check_room_conflict",
     "handle_desired_gender_callback",
     "start_chat",
     "try_match",

@@ -76,6 +76,24 @@ def in_room_reply_keyboard(secure: bool = False, is_owner: bool = False, room_op
     return ReplyKeyboardMarkup(rows, resize_keyboard=True)
 
 
+def room_closed_reply_keyboard() -> ReplyKeyboardMarkup:
+    """کیبورد پایین صفحه برای عضوهای غیر-owner وقتی اتاقشون موقتاً
+    بسته‌ست: چون تا وقتی active_room_id داری relay اجازه‌ی چت نمی‌ده،
+    دلیلی نداره تا بازشدنِ اتاق کاملاً بلاتکلیف بمونی — همون
+    main_reply_keyboard منهایِ «وصل کن به یه ناشناس» (که با
+    active_room_id مسدوده)، به‌علاوه‌ی «ترک اتاق» (که باید همیشه در
+    دسترس بمونه، even وقتی بسته‌ست). از خودِ main_reply_keyboard مشتق
+    می‌شه تا اگه دکمه‌ای بعداً به اونجا اضافه/کم شد، اینجا هم خودکار
+    sync بمونه."""
+    main_rows = main_reply_keyboard().keyboard
+    filtered_rows = [
+        [btn for btn in row if btn.text != "💬 وصل کن به یه ناشناس!"] for row in main_rows
+    ]
+    filtered_rows = [row for row in filtered_rows if row]
+    filtered_rows.insert(1, [KeyboardButton("🚪 ترک اتاق")])
+    return ReplyKeyboardMarkup(filtered_rows, resize_keyboard=True)
+
+
 def room_delete_confirm_keyboard() -> InlineKeyboardMarkup:
     """قبل از حذفِ قطعیِ اتاق (غیرقابلِ بازگشت) از owner تاییدِ صریح
     می‌گیره، هم‌راستا با end_chat_confirm_keyboard برای پایانِ چتِ ۱به۱."""

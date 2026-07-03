@@ -27,7 +27,13 @@ from telegram.ext import ContextTypes
 
 import redis_client as rc
 from db import delete_chat_room, set_room_open_status
-from keyboards import in_room_reply_keyboard, main_reply_keyboard, purge_history_keyboard, room_delete_confirm_keyboard
+from keyboards import (
+    in_room_reply_keyboard,
+    main_reply_keyboard,
+    purge_history_keyboard,
+    room_closed_reply_keyboard,
+    room_delete_confirm_keyboard,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -143,10 +149,30 @@ async def _set_room_status(update: Update, context: ContextTypes.DEFAULT_TYPE, i
 
     other_ids = [uid for uid in result["member_ids"] if uid != user_id]
     if is_open:
-        await broadcast_system_message(result["room_id"], "اتاق دوباره باز شد؛ می‌تونید پیام بدید.", context, member_ids=other_ids)
+        # با بازشدنِ اتاق، اعضا برمی‌گردن به کیبوردِ محدودِ داخلِ اتاق
+        # (چون دوباره می‌شه پیام رد و بدل کرد).
+        await broadcast_system_message(
+            result["room_id"],
+            "اتاق دوباره باز شد؛ می‌تونید پیام بدید.",
+            context,
+            member_ids=other_ids,
+            reply_markup=in_room_reply_keyboard(),
+        )
         text = "🔓 اتاق باز شد."
     else:
-        await broadcast_system_message(result["room_id"], "اتاق موقتاً بسته شد؛ فعلاً پیامی رد و بدل نمی‌شه.", context, member_ids=other_ids)
+        # با بسته‌شدنِ اتاق، اعضا (نه owner) همچنان active_room_id
+        # دارن (نمی‌تونن وارد چتِ ۱به۱ یا اتاقِ دیگه بشن)، ولی نباید
+        # بلاتکلیف بمونن؛ کیبوردشون عوض می‌شه که بقیه‌ی امکاناتِ ربات
+        # در دسترسشون باشه.
+        await broadcast_system_message(
+            result["room_id"],
+            "اتاقت موقتاً بسته شد و فعلاً پیامی رد و بدل نمی‌شه. تا بازشدنش می‌تونی "
+            "از بقیه‌ی امکاناتِ ربات استفاده کنی؛ فقط نمی‌تونی وارد چتِ ۱به۱ بشی یا "
+            "اتاقِ دیگه‌ای بسازی/بهش ملحق بشی.",
+            context,
+            member_ids=other_ids,
+            reply_markup=room_closed_reply_keyboard(),
+        )
         text = "🔒 اتاق بسته شد."
 
     await update.message.reply_text(text, reply_markup=in_room_reply_keyboard(is_owner=True, room_open=is_open))

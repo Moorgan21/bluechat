@@ -51,7 +51,7 @@ from telegram.ext import (
 import redis_client as rc
 import metrics
 import spam_guard
-from db import init_db, get_or_create_user, async_session, refund_coins
+from db import RoomStatus, get_chat_room, init_db, get_or_create_user, async_session, refund_coins
 from handlers import anon_note, chat, chatroom, coins, menu, nearby, profile, public_profile, report, search, settings
 
 logging.basicConfig(
@@ -195,6 +195,17 @@ IN_ROOM_KEYBOARD_ROUTES = {
     "🏠 اتاق چت": chatroom.show_room_menu,
 }
 
+# وقتی اتاق موقتاً بسته‌ست (نه حذف‌شده)، عضوهای غیر-owner همچنان
+# active_room_id دارن (پس نمی‌تونن وارد چتِ ۱به۱ یا اتاقِ دیگه بشن)،
+# ولی نباید بلاتکلیف بمونن — باید به بقیه‌ی امکاناتِ ربات دسترسی داشته
+# باشن. این زیرمجموعه‌ی REPLY_KEYBOARD_ROUTES رو مشتق می‌کنیم تا با
+# اضافه‌شدنِ دکمه‌ی جدید به منوی اصلی، خودکار sync بمونه.
+ROOM_CLOSED_ALLOWED_ROUTES = {
+    key: handler
+    for key, handler in REPLY_KEYBOARD_ROUTES.items()
+    if key not in ("💬 وصل کن به یه ناشناس!", "🏠 اتاق چت")
+}
+
 
 async def text_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     text = update.message.text or ""
@@ -260,6 +271,11 @@ async def text_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         if text in IN_ROOM_KEYBOARD_ROUTES:
             await IN_ROOM_KEYBOARD_ROUTES[text](update, context)
             return
+        if text in ROOM_CLOSED_ALLOWED_ROUTES:
+            room = await get_chat_room(active_room_id)
+            if room is not None and room.status == RoomStatus.closed:
+                await ROOM_CLOSED_ALLOWED_ROUTES[text](update, context)
+                return
         await chatroom.relay_room_message(update, context, active_room_id)
         return
 

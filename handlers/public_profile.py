@@ -62,6 +62,7 @@ from db import (
     set_reactions_enabled,
     set_silent_mode,
 )
+from handlers.chat import check_room_conflict
 from keyboards import (
     chat_request_decision_keyboard,
     in_chat_reply_keyboard,
@@ -177,6 +178,11 @@ async def handle_chat_request_button(update: Update, context: ContextTypes.DEFAU
         )
         return
 
+    room_conflict = await check_room_conflict(requester_id)
+    if room_conflict:
+        await query.message.reply_text(room_conflict)
+        return
+
     if await rc.get_partner(target_id) is not None:
         await query.message.reply_text("⚠️ این کاربر الان در یه چت فعال هست. بعداً تلاش کن.")
         return
@@ -288,6 +294,15 @@ async def handle_chat_request_accept(update: Update, context: ContextTypes.DEFAU
     if await rc.get_partner(acceptor_id) is not None or await rc.get_partner(requester_id) is not None:
         await query.edit_message_text(
             "یکی از دو طرف الان توی گفتگوی دیگه‌ای هست، پس این درخواست قابلِ قبول نیست."
+        )
+        await rc.clear_chat_request(request_id)
+        return
+
+    if await check_room_conflict(acceptor_id) or await check_room_conflict(requester_id):
+        # پیامِ دقیقِ اتاق/صف اهمیتی نداره؛ نکته‌ی مهم برای این دو نفر
+        # همینه که یکی‌شون آزادِ چتِ ۱به۱ نیست، صرف‌نظر از اینکه کدومه.
+        await query.edit_message_text(
+            "یکی از دو طرف الان توی یه اتاقِ چتِ فعاله یا منتظرِ عضویتِ یه اتاقه، پس این درخواست قابلِ قبول نیست."
         )
         await rc.clear_chat_request(request_id)
         return

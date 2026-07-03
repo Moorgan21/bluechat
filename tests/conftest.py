@@ -36,6 +36,7 @@ import pytest
 
 import db
 import redis_client as rc
+import spam_guard
 
 TEST_USER_ID_BASE = 900_000_000_000  # خارج از بازه‌ی واقعیِ آی‌دیِ کاربرهای تلگرام
 _next_test_id = [TEST_USER_ID_BASE]
@@ -78,11 +79,19 @@ async def _clean_test_redis():
     """قبل و بعد از هر تست، دیتابیسِ Redisِ تستی (index ۱۵) رو کاملاً خالی
     می‌کنه. چون این DB منحصراً برای تسته، flushdb اینجا امنه (برخلافِ DB
     ۰ی پروداکشن). disconnect بعد از هر تست هم به همون دلیلِ
-    event-loop-per-test لازمه، نگاه کن به _dispose_db_engine_after_test."""
+    event-loop-per-test لازمه، نگاه کن به _dispose_db_engine_after_test.
+
+    spam_guard.py یه clientِ Redisِ کاملاً جدا از redis_client.py داره
+    (هر دو به همون DBِ ایندکسِ ۱۵ وصلن، ولی pool اتصالشون جداست)؛
+    بدونِ disconnectِ جداگانه‌ش، اولین تستی که از یه event loopِ متفاوت
+    کدِ مسیرِ spam_guard رو صدا بزنه (مثلاً از طریقِ main.text_router)
+    با «Event loop is closed» کرش می‌کنه — دقیقاً همون مشکلی که
+    rc.r.connection_pool.disconnect() برای redis_client حل می‌کنه."""
     await rc.r.flushdb()
     yield
     await rc.r.flushdb()
     await rc.r.connection_pool.disconnect()
+    await spam_guard.r.connection_pool.disconnect()
 
 
 async def _wipe_test_chat_rooms() -> None:

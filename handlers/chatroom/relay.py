@@ -33,13 +33,17 @@ from telegram.ext import ContextTypes
 import metrics
 import redis_client as rc
 from db import RoomStatus, get_chat_room, get_display_name, get_room_member_ids
-from keyboards import in_room_reply_keyboard, main_reply_keyboard
+from keyboards import in_room_reply_keyboard, main_reply_keyboard, room_closed_reply_keyboard
 
 logger = logging.getLogger(__name__)
 
 
 async def broadcast_system_message(
-    room_id: int, message: str, context: ContextTypes.DEFAULT_TYPE, member_ids: list[int] | None = None
+    room_id: int,
+    message: str,
+    context: ContextTypes.DEFAULT_TYPE,
+    member_ids: list[int] | None = None,
+    reply_markup=None,
 ) -> None:
     """پیامِ سیستمی (ترک، اخراج، بستن/بازکردنِ اتاق و غیره) رو با
     پیشوندِ ثابتِ ℹ️ به همه‌ی اعضای *فعلیِ* اتاق می‌فرسته؛ مستقل از
@@ -49,13 +53,18 @@ async def broadcast_system_message(
     member_ids رو می‌شه از بیرون داد (مثلاً لیستِ اعضایی که هنوز DELETE
     نشدن، برای پیامِ اطلاع به یه عضوِ در-حالِ-جداشدن)؛ اگه ندی، از
     Postgres خونده می‌شه (یعنی وضعیتِ *بعد* از تغییر، چون معمولاً این
-    تابع بعد از commitِ همون تغییر صدا زده می‌شه)."""
+    تابع بعد از commitِ همون تغییر صدا زده می‌شه).
+
+    reply_markup اختیاریه و به همه‌ی گیرنده‌ها یکسان اعمال می‌شه؛ مثلاً
+    وقتی اتاق بسته می‌شه، این جاییه که کیبوردِ اعضا رو از حالتِ
+    محدودِ in_room_reply_keyboard به room_closed_reply_keyboard تغییر
+    می‌دیم."""
     if member_ids is None:
         member_ids = await get_room_member_ids(room_id)
     text = f"ℹ️ {message}"
     for member_id in member_ids:
         try:
-            await context.bot.send_message(member_id, text)
+            await context.bot.send_message(member_id, text, reply_markup=reply_markup)
         except TelegramError:
             pass
 
@@ -74,7 +83,15 @@ async def relay_room_message(update: Update, context: ContextTypes.DEFAULT_TYPE,
         return
 
     if room.status == RoomStatus.closed:
-        await update.effective_message.reply_text("🔒 این اتاق فعلاً بسته‌ست و پیام رد و بدل نمی‌شه.")
+        if user_id == room.owner_id:
+            keyboard = in_room_reply_keyboard(is_owner=True, room_open=False)
+        else:
+            keyboard = room_closed_reply_keyboard()
+        await update.effective_message.reply_text(
+            "🔒 این اتاق فعلاً بسته‌ست و پیام رد و بدل نمی‌شه. تا بازشدنش می‌تونی از "
+            "بقیه‌ی امکاناتِ ربات استفاده کنی.",
+            reply_markup=keyboard,
+        )
         return
 
     msg = update.message

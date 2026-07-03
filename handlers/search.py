@@ -27,7 +27,7 @@ from telegram.ext import ContextTypes
 
 import redis_client as rc
 from db import Gender, User, async_session, deduct_coins, get_or_create_user
-from handlers.chat import try_match
+from handlers.chat import check_room_conflict, try_match
 from keyboards import search_users_keyboard
 
 FILTERS_KEY = "search_filters"  # {"gender": "male"|"female"|None, "min_age":..,"max_age":..}
@@ -134,18 +134,10 @@ async def run_search(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
             await query.answer()
             await start_onboarding(update, context)
             return
-        has_active_room = me.active_room_id is not None
 
-    if has_active_room:
-        await query.edit_message_text(
-            "⚠️ الان یه اتاقِ چتِ فعال داری. تا وقتی اونجایی، نمی‌تونی وارد چتِ ۱به۱ بشی."
-        )
-        return
-
-    if await rc.is_waiting_room_join(user_id) is not None:
-        await query.edit_message_text(
-            "⚠️ الان منتظرِ پیدا شدنِ یه اتاقی. تا وقتی جستجوی اتاق تمومِ نشده، نمی‌تونی وارد چتِ ۱به۱ بشی."
-        )
+    room_conflict = await check_room_conflict(user_id)
+    if room_conflict:
+        await query.edit_message_text(room_conflict)
         return
 
     if await rc.get_partner(user_id) is not None:
