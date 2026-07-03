@@ -38,6 +38,28 @@ from keyboards import in_room_reply_keyboard, main_reply_keyboard
 logger = logging.getLogger(__name__)
 
 
+async def broadcast_system_message(
+    room_id: int, message: str, context: ContextTypes.DEFAULT_TYPE, member_ids: list[int] | None = None
+) -> None:
+    """پیامِ سیستمی (ترک، اخراج، بستن/بازکردنِ اتاق و غیره) رو با
+    پیشوندِ ثابتِ ℹ️ به همه‌ی اعضای *فعلیِ* اتاق می‌فرسته؛ مستقل از
+    تابعِ relayِ معمولی، تا هیچ‌وقت شبیهِ پیامِ جعل‌شده‌ی یه کاربر با
+    فرمتِ «نام: متن» به نظر نرسه.
+
+    member_ids رو می‌شه از بیرون داد (مثلاً لیستِ اعضایی که هنوز DELETE
+    نشدن، برای پیامِ اطلاع به یه عضوِ در-حالِ-جداشدن)؛ اگه ندی، از
+    Postgres خونده می‌شه (یعنی وضعیتِ *بعد* از تغییر، چون معمولاً این
+    تابع بعد از commitِ همون تغییر صدا زده می‌شه)."""
+    if member_ids is None:
+        member_ids = await get_room_member_ids(room_id)
+    text = f"ℹ️ {message}"
+    for member_id in member_ids:
+        try:
+            await context.bot.send_message(member_id, text)
+        except TelegramError:
+            pass
+
+
 async def relay_room_message(update: Update, context: ContextTypes.DEFAULT_TYPE, room_id: int) -> None:
     user_id = update.effective_user.id
     room = await get_chat_room(room_id)
@@ -115,10 +137,16 @@ async def toggle_secure_chat_button(update: Update, context: ContextTypes.DEFAUL
     که توی اتاق درست نیست؛ اینجا فقط پرچم رو عوض می‌کنه و به کسِ دیگه‌ای
     خبر نمی‌ده."""
     user_id = update.effective_user.id
+    room_id = await rc.get_active_room(user_id)
+    is_owner = False
+    if room_id is not None:
+        room = await get_chat_room(room_id)
+        is_owner = room is not None and room.owner_id == user_id
+
     new_state = await rc.toggle_secure_chat(user_id)
     await update.message.reply_text(
         "🔒 چتِ امن فعال شد." if new_state else "🔓 چتِ امن غیرفعال شد.",
-        reply_markup=in_room_reply_keyboard(secure=new_state),
+        reply_markup=in_room_reply_keyboard(secure=new_state, is_owner=is_owner),
     )
 
 

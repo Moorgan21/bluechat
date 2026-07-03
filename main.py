@@ -188,6 +188,7 @@ IN_CHAT_KEYBOARD_ROUTES = {
 IN_ROOM_KEYBOARD_ROUTES = {
     "🔒 چت امن (غیرفعال)": chatroom.toggle_secure_chat_button,
     "🔒 چت امن (فعال)": chatroom.toggle_secure_chat_button,
+    "🚪 ترک اتاق": chatroom.leave_room_button,
 }
 
 

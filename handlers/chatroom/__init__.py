@@ -15,8 +15,9 @@
 
 """پکیجِ هندلرهای اتاقِ چت، مثلِ handlers/chat/ به فایل‌های جدا بر اساسِ
 مسئولیت شکسته می‌شه: creation.py (فلوی ساختِ اتاق)، matching.py
-(فلوی عضویت)، relay.py (رله‌ی پیام داخلِ اتاق). moderation.py و
-membership.py (ابزارهای owner و ترک) توی فازهای بعدی اضافه می‌شن.
+(فلوی عضویت)، relay.py (رله‌ی پیام داخلِ اتاق)، membership.py (ترکِ
+اتاق توسطِ عضوِ عادی). moderation.py (ابزارهای owner: حذفِ پیام،
+اخراج، بستن/بازکردن، حذفِ اتاق) توی فازِ بعدی اضافه می‌شه.
 """
 
 from .creation import (
@@ -25,8 +26,10 @@ from .creation import (
 )
 from .matching import sweep_room_join_queue
 from .relay import relay_room_edit, relay_room_message, toggle_secure_chat_button
+from .membership import leave_room_button
 
 __all__ = [
+    "leave_room_button",
     "relay_room_edit",
     "relay_room_message",
     "room_menu_callback_router",

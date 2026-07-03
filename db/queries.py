@@ -23,7 +23,7 @@ get_or_create_user که برای استفاده‌ی مشترک بینِ چند 
 from datetime import datetime
 
 from geoalchemy2.functions import ST_MakePoint, ST_SetSRID
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .connections import async_session
@@ -421,6 +421,77 @@ async def join_chat_room(user_id: int, room_id: int) -> tuple[ChatRoom | None, s
         await session.commit()
         await session.refresh(room)
         return room, None
+
+
+async def leave_chat_room(user_id: int) -> tuple[dict | None, str | None]:
+    """یه عضوِ عادی (نه owner) رو از اتاقش خارج می‌کنه. اگه بعدِ خروج
+    فقط owner بمونه، اتاق خودکار حذف می‌شه (status=deleted) و
+    active_room_idِ owner هم پاک می‌شه.
+
+    خروجی: (info, None) در موفقیت، یا (None, error_code) که یکی از
+    "not_found" (اتاقِ فعالی نداره)، "is_owner" (owner نمی‌تونه ترک
+    کنه، باید ببنده/حذفش کنه) است. info شاملِ room_id، owner_id،
+    auto_deleted، و remaining_member_ids (برای broadcast) است.
+
+    ترتیبِ قفل عمداً همون room-then-user ِ join_chat_room است: اول یه
+    خوندنِ بدونِ قفل برای پیدا کردنِ room_id، بعد قفلِ room، بعد قفلِ
+    user. اگه برعکس می‌شد (اول user)، دو تابع می‌تونستن رو دو ردیفِ
+    مشترک قفلِ برعکسِ هم بگیرن و توریِ deadlock بسازن."""
+    async with async_session() as session:
+        user_peek = await session.get(User, user_id)
+        if user_peek is None or user_peek.active_room_id is None:
+            return None, "not_found"
+        room_id = user_peek.active_room_id
+
+        room_result = await session.execute(
+            select(ChatRoom).where(ChatRoom.id == room_id).with_for_update()
+        )
+        room = room_result.scalar_one_or_none()
+        if room is None:
+            return None, "not_found"
+
+        user_result = await session.execute(
+            select(User).where(User.id == user_id).with_for_update()
+        )
+        user = user_result.scalar_one_or_none()
+        if user is None or user.active_room_id != room_id:
+            return None, "not_found"  # بینِ خوندنِ اول و قفل، وضعیت عوض شده
+
+        if room.owner_id == user_id:
+            return None, "is_owner"
+
+        await session.execute(
+            delete(ChatRoomMember).where(ChatRoomMember.room_id == room_id, ChatRoomMember.user_id == user_id)
+        )
+        user.active_room_id = None
+
+        remaining_count = (
+            await session.execute(
+                select(func.count()).select_from(ChatRoomMember).where(ChatRoomMember.room_id == room_id)
+            )
+        ).scalar_one()
+
+        remaining_ids_result = await session.execute(
+            select(ChatRoomMember.user_id).where(ChatRoomMember.room_id == room_id)
+        )
+        remaining_member_ids = [row[0] for row in remaining_ids_result.all()]
+
+        auto_deleted = remaining_count <= 1
+        if auto_deleted:
+            room.status = RoomStatus.deleted
+            for uid in remaining_member_ids:
+                remaining_user = await session.get(User, uid)
+                if remaining_user is not None:
+                    remaining_user.active_room_id = None
+            await session.execute(delete(ChatRoomMember).where(ChatRoomMember.room_id == room_id))
+
+        await session.commit()
+        return {
+            "room_id": room_id,
+            "owner_id": room.owner_id,
+            "auto_deleted": auto_deleted,
+            "remaining_member_ids": remaining_member_ids,
+        }, None
 
 
 async def get_chat_room(room_id: int) -> ChatRoom | None:

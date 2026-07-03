@@ -139,7 +139,7 @@ async def _handle_capacity_selected(update: Update, context: ContextTypes.DEFAUL
         "الان توی این اتاق تنها هستی؛ به محض این‌که یه نفر بهش ملحق بشه، بهت خبر می‌دیم."
     )
     await context.bot.send_message(
-        user_id, "از الان هرچی بفرستی توی اتاقت relay می‌شه 👇", reply_markup=in_room_reply_keyboard()
+        user_id, "از الان هرچی بفرستی توی اتاقت relay می‌شه 👇", reply_markup=in_room_reply_keyboard(is_owner=True)
     )
 
     # trigger بعد از commitِ کاملِ ساختِ اتاق صدا زده می‌شه (نه داخلِ
