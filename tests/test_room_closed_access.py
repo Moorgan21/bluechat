@@ -1,6 +1,9 @@
 """تست‌های واحد برای رفعِ گزارشِ کاربر: وقتی owner اتاق رو می‌بنده،
-عضوهای غیر-owner باید بتونن به بقیه‌ی امکاناتِ ربات (پروفایل، سکه،
-تنظیمات و...) دسترسی داشته باشن، فقط نه چتِ ۱به۱ و نه اتاقِ جدید.
+عضوهای غیر-owner باید بدونِ هیچ تغییری تو دکمه‌های منویِ اصلی، بهش
+هدایت بشن (فقط با راهنماییِ /room برای چک‌کردنِ وضعیتِ اتاق)، و همه‌ی
+دکمه‌های منو در دسترس بمونن — حتی «وصل کن به یه ناشناس» که کیبوردِ
+اینلاینِ انتخابِ جنسیت رو نشون می‌ده؛ فقط وقتی واقعاً روی یه گزینه بزنه
+باید بگه اتاقِ فعال داره.
 
 همین‌جا گپِ جانبی‌ای که موقعِ بررسی پیدا شد رو هم پوشش می‌دیم: فلوی
 درخواستِ چتِ پروفایلِ عمومی (public_profile.py) اصلاً چکِ اتاق نداشت،
@@ -13,7 +16,7 @@ from sqlalchemy import delete, select
 import db
 import redis_client as rc
 from handlers import public_profile
-from keyboards import room_closed_reply_keyboard
+from handlers.chat import matching as chat_matching
 
 
 async def _complete_profile(user):
@@ -46,20 +49,10 @@ async def _make_room(make_user):
     return room, owner, member
 
 
-def test_room_closed_reply_keyboard_excludes_1to1_but_keeps_leave():
-    keyboard = room_closed_reply_keyboard()
-    labels = {btn.text for row in keyboard.keyboard for btn in row}
-    assert "💬 وصل کن به یه ناشناس!" not in labels
-    assert "🚪 ترک اتاق" in labels
-    assert "👤 پروفایل" in labels
-    assert "💰 سکه" in labels
-    assert "🏠 اتاق چت" in labels
-
-
-def test_room_closed_allowed_routes_excludes_1to1_and_room_button():
+def test_room_closed_allowed_routes_includes_1to1_excludes_only_room_button():
     import main
 
-    assert "💬 وصل کن به یه ناشناس!" not in main.ROOM_CLOSED_ALLOWED_ROUTES
+    assert "💬 وصل کن به یه ناشناس!" in main.ROOM_CLOSED_ALLOWED_ROUTES
     assert "🏠 اتاق چت" not in main.ROOM_CLOSED_ALLOWED_ROUTES
     assert "👤 پروفایل" in main.ROOM_CLOSED_ALLOWED_ROUTES
     assert "💰 سکه" in main.ROOM_CLOSED_ALLOWED_ROUTES
@@ -91,6 +84,88 @@ async def test_text_router_lets_closed_room_member_reach_other_features(make_use
     text = update.message.reply_text.await_args.args[0]
     assert "بسته‌ست" not in text
     assert "کاربر تست" in text
+
+    await _cleanup_room(room.id)
+
+
+async def test_text_router_lets_closed_room_member_open_1to1_gender_menu(make_user):
+    """کلیک روی «وصل کن به یه ناشناس» وقتی اتاق بسته‌ست نباید فوراً رد
+    بشه؛ باید کیبوردِ اینلاینِ انتخابِ جنسیت رو نشون بده (چون next_gender_pref
+    ذخیره‌نشده)."""
+    import main
+
+    room, owner, member = await _make_room(make_user)
+    await _complete_profile(member)
+    await db.set_room_open_status(owner.id, is_open=False)
+
+    update = MagicMock()
+    update.effective_user.id = member.id
+    update.effective_user.username = "test"
+    update.effective_user.first_name = "کاربر"
+    update.effective_message = MagicMock()
+    update.effective_message.reply_text = AsyncMock()
+    update.message = update.effective_message
+    update.message.text = "💬 وصل کن به یه ناشناس!"
+    update.callback_query = None
+    context = MagicMock()
+    context.user_data = {}
+
+    await main.text_router(update, context)
+
+    update.effective_message.reply_text.assert_awaited_once()
+    text = update.effective_message.reply_text.await_args.args[0]
+    assert "چه جنسیتی" in text
+    assert "اتاقِ چتِ فعال" not in text
+
+    await _cleanup_room(room.id)
+
+
+async def test_desired_gender_callback_still_blocked_for_closed_room_member(make_user):
+    room, owner, member = await _make_room(make_user)
+    await db.set_room_open_status(owner.id, is_open=False)
+
+    query = MagicMock()
+    query.data = "matchgender:any"
+    query.from_user.id = member.id
+    query.answer = AsyncMock()
+    query.edit_message_text = AsyncMock()
+    update = MagicMock()
+    update.callback_query = query
+
+    await chat_matching.handle_desired_gender_callback(update, MagicMock())
+
+    query.edit_message_text.assert_awaited_once()
+    assert "اتاقِ چتِ فعال" in query.edit_message_text.await_args.args[0]
+    assert await rc.get_partner(member.id) is None
+
+    await _cleanup_room(room.id)
+
+
+async def test_start_chat_with_saved_pref_still_blocked_for_room_member(make_user):
+    """وقتی next_gender_pref از قبل ذخیره‌ست، start_chat مستقیم می‌ره
+    سراغِ try_match بدونِ نمایشِ کیبوردِ اینلاین؛ پس چکِ اتاق همین‌جا
+    باید انجام بشه، وگرنه مستقیم وارد صفِ ۱به۱ می‌شد."""
+    room, owner, member = await _make_room(make_user)
+    async with db.async_session() as session:
+        u = await session.get(db.User, member.id)
+        u.display_name = "کاربر تست"
+        u.gender = db.Gender.male
+        u.age = 25
+        u.next_gender_pref = "any"
+        await session.commit()
+
+    update = MagicMock()
+    update.effective_user.id = member.id
+    update.effective_user.username = "test"
+    update.effective_user.first_name = "کاربر تست"
+    update.effective_message = MagicMock()
+    update.effective_message.reply_text = AsyncMock()
+
+    await chat_matching.start_chat(update, MagicMock())
+
+    update.effective_message.reply_text.assert_awaited_once()
+    assert "اتاقِ چتِ فعال" in update.effective_message.reply_text.await_args.args[0]
+    assert await rc.is_waiting(member.id) is False
 
     await _cleanup_room(room.id)
 
@@ -182,7 +257,7 @@ async def test_chat_request_accept_blocked_when_acceptor_in_room(make_user):
     await _cleanup_room(room.id)
 
 
-async def test_close_room_sends_non_owner_closed_keyboard(make_user):
+async def test_close_room_sends_non_owner_the_plain_main_menu(make_user):
     from handlers.chatroom import close_room_button
 
     room, owner, member = await _make_room(make_user)
@@ -200,15 +275,17 @@ async def test_close_room_sends_non_owner_closed_keyboard(make_user):
     member_call = next(
         c for c in context.bot.send_message.await_args_list if c.args[0] == member.id
     )
-    assert "بقیه‌ی امکاناتِ ربات" in member_call.args[1]
+    assert "/room" in member_call.args[1]
     sent_labels = {btn.text for row in member_call.kwargs["reply_markup"].keyboard for btn in row}
     assert "👤 پروفایل" in sent_labels
-    assert "💬 وصل کن به یه ناشناس!" not in sent_labels
+    assert "💬 وصل کن به یه ناشناس!" in sent_labels  # منوی کامل، بدونِ حذفِ دکمه
 
     await _cleanup_room(room.id)
 
 
-async def test_show_active_room_status_uses_closed_keyboard_for_member(make_user):
+async def test_show_active_room_status_uses_normal_in_room_keyboard(make_user):
+    """چک‌کردنِ وضعیت با «🏠 اتاق چت» باید همیشه کیبوردِ داخلِ-اتاق
+    (ترک/چتِ امن) رو نشون بده، even وقتی بسته‌ست — نه منوی اصلی."""
     from handlers import chatroom
 
     room, owner, member = await _make_room(make_user)
@@ -225,6 +302,7 @@ async def test_show_active_room_status_uses_closed_keyboard_for_member(make_user
     update.message.reply_text.assert_awaited_once()
     markup = update.message.reply_text.await_args.kwargs["reply_markup"]
     sent_labels = {btn.text for row in markup.keyboard for btn in row}
-    assert "👤 پروفایل" in sent_labels
+    assert "🚪 ترک اتاق" in sent_labels
+    assert "👤 پروفایل" not in sent_labels
 
     await _cleanup_room(room.id)

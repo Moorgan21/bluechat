@@ -18,13 +18,51 @@ def _make_context():
     return context
 
 
-async def test_start_chat_blocked_while_waiting_for_room(make_user):
+async def test_start_chat_without_saved_pref_shows_gender_menu_while_waiting_for_room(make_user):
+    """بدونِ next_gender_pref ذخیره‌شده، start_chat فقط کیبوردِ
+    اینلاینِ انتخابِ جنسیت رو نشون می‌ده، بدونِ هیچ اکشنِ واقعی؛ پس
+    نباید همین‌جا با پیامِ اتاق رد بشه — چکِ واقعی جای دیگه‌ایه
+    (handle_desired_gender_callback)."""
     user = await make_user(coins=10)
     async with db.async_session() as session:
         u = await session.get(db.User, user.id)
         u.display_name = "علی"
         u.gender = db.Gender.male
         u.age = 25
+        await session.commit()
+
+    await rc.enqueue_room_join(user.id, "any")
+
+    update = MagicMock()
+    update.effective_user.id = user.id
+    update.effective_user.username = "test"
+    update.effective_user.first_name = "علی"
+    update.effective_message = MagicMock()
+    update.effective_message.reply_text = AsyncMock()
+
+    await matching.start_chat(update, _make_context())
+
+    update.effective_message.reply_text.assert_awaited_once()
+    text = update.effective_message.reply_text.await_args.args[0]
+    assert "چه جنسیتی" in text
+    assert "منتظرِ پیدا شدنِ یه اتاقی" not in text
+
+    assert await rc.get_partner(user.id) is None
+    assert await rc.is_waiting(user.id) is False
+
+    await rc.dequeue_room_join(user.id, "any")
+
+
+async def test_start_chat_with_saved_pref_blocked_while_waiting_for_room(make_user):
+    """با next_gender_pref ذخیره‌شده، start_chat مستقیم می‌ره سراغِ
+    try_match بدونِ نمایشِ کیبورد؛ پس چکِ اتاق همین‌جا لازمه."""
+    user = await make_user(coins=10)
+    async with db.async_session() as session:
+        u = await session.get(db.User, user.id)
+        u.display_name = "علی"
+        u.gender = db.Gender.male
+        u.age = 25
+        u.next_gender_pref = "any"
         await session.commit()
 
     await rc.enqueue_room_join(user.id, "any")

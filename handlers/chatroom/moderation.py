@@ -31,7 +31,6 @@ from keyboards import (
     in_room_reply_keyboard,
     main_reply_keyboard,
     purge_history_keyboard,
-    room_closed_reply_keyboard,
     room_delete_confirm_keyboard,
 )
 
@@ -160,18 +159,18 @@ async def _set_room_status(update: Update, context: ContextTypes.DEFAULT_TYPE, i
         )
         text = "🔓 اتاق باز شد."
     else:
-        # با بسته‌شدنِ اتاق، اعضا (نه owner) همچنان active_room_id
-        # دارن (نمی‌تونن وارد چتِ ۱به۱ یا اتاقِ دیگه بشن)، ولی نباید
-        # بلاتکلیف بمونن؛ کیبوردشون عوض می‌شه که بقیه‌ی امکاناتِ ربات
-        # در دسترسشون باشه.
+        # با بسته‌شدنِ اتاق، اعضا (نه owner) به منوی اصلیِ کامل و
+        # بدون‌تغییر هدایت می‌شن؛ همچنان active_room_id دارن (نمی‌تونن
+        # وارد چتِ ۱به۱ بشن یا اتاقِ دیگه بسازن/بهش ملحق بشن) ولی
+        # می‌تونن با /room وضعیتِ همین اتاق رو هر وقت خواستن ببینن.
         await broadcast_system_message(
             result["room_id"],
-            "اتاقت موقتاً بسته شد و فعلاً پیامی رد و بدل نمی‌شه. تا بازشدنش می‌تونی "
-            "از بقیه‌ی امکاناتِ ربات استفاده کنی؛ فقط نمی‌تونی وارد چتِ ۱به۱ بشی یا "
-            "اتاقِ دیگه‌ای بسازی/بهش ملحق بشی.",
+            "اتاقت موقتاً بسته شد و فعلاً پیامی رد و بدل نمی‌شه. با دستورِ /room "
+            "می‌تونی وضعیتِ اتاقتو چک کنی؛ فعلاً می‌تونی از بقیه‌ی امکاناتِ ربات "
+            "استفاده کنی.",
             context,
             member_ids=other_ids,
-            reply_markup=room_closed_reply_keyboard(),
+            reply_markup=main_reply_keyboard(),
         )
         text = "🔒 اتاق بسته شد."
 

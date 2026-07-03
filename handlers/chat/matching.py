@@ -193,11 +193,6 @@ async def start_chat(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         await start_onboarding(update, context)
         return
 
-    room_conflict = await check_room_conflict(user_id)
-    if room_conflict:
-        await update.effective_message.reply_text(room_conflict)
-        return
-
     if await rc.get_partner(user_id) is not None:
         await update.effective_message.reply_text(
             "الان توی یه گفتگو هستی.", reply_markup=in_chat_reply_keyboard()
@@ -213,6 +208,15 @@ async def start_chat(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     saved_pref = user.next_gender_pref if user else None
 
     if saved_pref is not None:
+        # این شاخه بدونِ نمایشِ کیبوردِ اینلاین مستقیم می‌ره سراغِ
+        # try_match، پس برخلافِ شاخه‌ی else، چکِ اتاق اینجا لازمه؛ وگرنه
+        # کسی که اتاقِ فعالِ بسته داره می‌تونست بی‌واسطه هم وارد صفِ
+        # ۱به۱ بشه هم عضوِ اتاق بمونه.
+        room_conflict = await check_room_conflict(user_id)
+        if room_conflict:
+            await update.effective_message.reply_text(room_conflict)
+            return
+
         desired_gender = None if saved_pref == "any" else saved_pref
         if desired_gender is not None:
             new_balance = await deduct_coins(user_id, rc.CHAT_COIN_COST, "gender_search")
@@ -227,6 +231,9 @@ async def start_chat(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         await update.effective_message.reply_text("👋 در حال جستجوی یه همراه برات هستم...")
         await try_match(user_id, context, desired_gender)
     else:
+        # اینجا چکِ اتاق عمداً نیست: فقط کیبوردِ اینلاینِ انتخابِ جنسیت
+        # نشون داده می‌شه، بدونِ هیچ اکشنِ واقعی؛ چکِ واقعی وقتیه که
+        # واقعاً روی یکی از گزینه‌ها بزنه (handle_desired_gender_callback).
         await update.effective_message.reply_text(
             "می‌خوای به چه جنسیتی وصل بشی؟\n"
             "💡 می‌تونی این ترجیح رو توی /settings ذخیره کنی تا دیگه هر بار نپرسه.",

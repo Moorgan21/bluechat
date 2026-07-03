@@ -26,7 +26,6 @@ from db import RoomGenderPref, RoomStatus, create_chat_room, get_chat_room, get_
 from keyboards import (
     in_room_reply_keyboard,
     room_capacity_keyboard,
-    room_closed_reply_keyboard,
     room_gender_keyboard,
     room_menu_keyboard,
 )
@@ -81,17 +80,11 @@ async def _show_active_room_status(
         f"وضعیت: {status_label}\n"
         f"نقشِ تو: {'owner (مالک)' if is_owner else 'عضو'}"
     )
-    if not is_owner and room.status == RoomStatus.closed:
-        # عضوِ عادی وقتی اتاق بسته‌ست، همون کیبوردِ محدود-برداشته‌شده
-        # رو باید ببینه، نه اینکه با چک‌کردنِ وضعیت دوباره قفل بشه رو
-        # in_room_reply_keyboard.
-        keyboard = room_closed_reply_keyboard()
-    else:
-        keyboard = in_room_reply_keyboard(
-            secure=await rc.is_secure_chat(user_id),
-            is_owner=is_owner,
-            room_open=room.status == RoomStatus.open,
-        )
+    keyboard = in_room_reply_keyboard(
+        secure=await rc.is_secure_chat(user_id),
+        is_owner=is_owner,
+        room_open=room.status == RoomStatus.open,
+    )
     if update.callback_query:
         await update.callback_query.message.reply_text(text, reply_markup=keyboard)
     else:

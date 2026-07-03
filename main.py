@@ -196,14 +196,16 @@ IN_ROOM_KEYBOARD_ROUTES = {
 }
 
 # وقتی اتاق موقتاً بسته‌ست (نه حذف‌شده)، عضوهای غیر-owner همچنان
-# active_room_id دارن (پس نمی‌تونن وارد چتِ ۱به۱ یا اتاقِ دیگه بشن)،
-# ولی نباید بلاتکلیف بمونن — باید به بقیه‌ی امکاناتِ ربات دسترسی داشته
-# باشن. این زیرمجموعه‌ی REPLY_KEYBOARD_ROUTES رو مشتق می‌کنیم تا با
+# active_room_id دارن، ولی نباید بلاتکلیف بمونن — منوی اصلیِ کامل و
+# بدون‌تغییر باید در دسترس باشه، شاملِ «وصل کن به یه ناشناس» (که
+# می‌تونه کیبوردِ اینلاینِ انتخابِ جنسیت رو نشون بده؛ چکِ واقعیِ
+# تعارض فقط وقتیه که واقعاً روی یه گزینه بزنه، تو
+# handle_desired_gender_callback). فقط «🏠 اتاق چت» رو کنار می‌ذاریم
+# چون IN_ROOM_KEYBOARD_ROUTES از قبل مستقل از این دیکشنری مدیریتش
+# می‌کنه. این زیرمجموعه‌ی REPLY_KEYBOARD_ROUTES رو مشتق می‌کنیم تا با
 # اضافه‌شدنِ دکمه‌ی جدید به منوی اصلی، خودکار sync بمونه.
 ROOM_CLOSED_ALLOWED_ROUTES = {
-    key: handler
-    for key, handler in REPLY_KEYBOARD_ROUTES.items()
-    if key not in ("💬 وصل کن به یه ناشناس!", "🏠 اتاق چت")
+    key: handler for key, handler in REPLY_KEYBOARD_ROUTES.items() if key != "🏠 اتاق چت"
 }
 
 

@@ -33,7 +33,7 @@ from telegram.ext import ContextTypes
 import metrics
 import redis_client as rc
 from db import RoomStatus, get_chat_room, get_display_name, get_room_member_ids
-from keyboards import in_room_reply_keyboard, main_reply_keyboard, room_closed_reply_keyboard
+from keyboards import in_room_reply_keyboard, main_reply_keyboard
 
 logger = logging.getLogger(__name__)
 
@@ -56,9 +56,9 @@ async def broadcast_system_message(
     تابع بعد از commitِ همون تغییر صدا زده می‌شه).
 
     reply_markup اختیاریه و به همه‌ی گیرنده‌ها یکسان اعمال می‌شه؛ مثلاً
-    وقتی اتاق بسته می‌شه، این جاییه که کیبوردِ اعضا رو از حالتِ
-    محدودِ in_room_reply_keyboard به room_closed_reply_keyboard تغییر
-    می‌دیم."""
+    وقتی اتاق بسته می‌شه، این جاییه که کیبوردِ اعضا رو از
+    in_room_reply_keyboard به main_reply_keyboard تغییر می‌دیم (چون
+    دیگه نمی‌تونن پیام بدن، ولی نباید بلاتکلیف بمونن)."""
     if member_ids is None:
         member_ids = await get_room_member_ids(room_id)
     text = f"ℹ️ {message}"
@@ -86,10 +86,10 @@ async def relay_room_message(update: Update, context: ContextTypes.DEFAULT_TYPE,
         if user_id == room.owner_id:
             keyboard = in_room_reply_keyboard(is_owner=True, room_open=False)
         else:
-            keyboard = room_closed_reply_keyboard()
+            keyboard = main_reply_keyboard()
         await update.effective_message.reply_text(
-            "🔒 این اتاق فعلاً بسته‌ست و پیام رد و بدل نمی‌شه. تا بازشدنش می‌تونی از "
-            "بقیه‌ی امکاناتِ ربات استفاده کنی.",
+            "🔒 این اتاق فعلاً بسته‌ست و پیام رد و بدل نمی‌شه. با دستورِ /room "
+            "می‌تونی وضعیتشو چک کنی؛ فعلاً می‌تونی از بقیه‌ی امکاناتِ ربات استفاده کنی.",
             reply_markup=keyboard,
         )
         return
