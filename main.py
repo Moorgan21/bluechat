@@ -52,7 +52,7 @@ import redis_client as rc
 import metrics
 import spam_guard
 from db import init_db, get_or_create_user, async_session, refund_coins
-from handlers import anon_note, chat, coins, menu, nearby, profile, public_profile, report, search, settings
+from handlers import anon_note, chat, chatroom, coins, menu, nearby, profile, public_profile, report, search, settings
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -168,6 +168,7 @@ REPLY_KEYBOARD_ROUTES = {
     "💬 وصل کن به یه ناشناس!": chat.start_chat,
     "💬 جستجوی کاربران 🔮": search.show_search_menu,
     "📍 افراد نزدیک 🛰": nearby.show_nearby_menu,
+    "🏠 اتاق چت": chatroom.show_room_menu,
     "💰 سکه": coins.show_coins,
     "👤 پروفایل": profile.show_profile,
     "🤔 راهنما": menu.show_help,
@@ -389,6 +390,8 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         await public_profile.reaction_settings_router(update, context)
     elif data.startswith("settings:"):
         await settings.handle_settings_callback(update, context)
+    elif data.startswith("roommenu:") or data.startswith("roomgender:") or data.startswith("roomcap:"):
+        await chatroom.room_menu_callback_router(update, context)
     elif data == "generic:cancel":
         await update.callback_query.answer()
         context.user_data.pop("awaiting_note_target", None)

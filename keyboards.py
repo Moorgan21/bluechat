@@ -41,6 +41,7 @@ def main_reply_keyboard() -> ReplyKeyboardMarkup:
     keyboard = [
         [KeyboardButton("💬 وصل کن به یه ناشناس!")],
         [KeyboardButton("💬 جستجوی کاربران 🔮"), KeyboardButton("📍 افراد نزدیک 🛰")],
+        [KeyboardButton("🏠 اتاق چت")],
         [KeyboardButton("💰 سکه"), KeyboardButton("👤 پروفایل"), KeyboardButton("⚙️ تنظیمات"), KeyboardButton("🤔 راهنما")],
         [KeyboardButton("🔗 معرفی به دوستان (سکه رایگان)")],
         [KeyboardButton("🥷 لینک ناشناس من")],
@@ -111,6 +112,48 @@ def desired_gender_keyboard() -> InlineKeyboardMarkup:
                 InlineKeyboardButton("👨 پسر", callback_data="matchgender:male"),
             ],
             [InlineKeyboardButton("🤷 فرقی نمی‌کنه", callback_data="matchgender:any")],
+        ]
+    )
+
+
+def room_menu_keyboard() -> InlineKeyboardMarkup:
+    """زیرِ «🏠 اتاق چت» توی منوی اصلی."""
+    return InlineKeyboardMarkup(
+        [
+            [InlineKeyboardButton("➕ ایجاد اتاق چت", callback_data="roommenu:create")],
+            [InlineKeyboardButton("🔍 عضویت در اتاق چت", callback_data="roommenu:join")],
+            [InlineKeyboardButton("🔙 بازگشت به منو", callback_data="menu:main")],
+        ]
+    )
+
+
+def room_gender_keyboard() -> InlineKeyboardMarkup:
+    """قدمِ اول از ساختِ اتاق: نوعِ اتاق."""
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton("👩 دخترونه", callback_data="roomgender:female"),
+                InlineKeyboardButton("👨 پسرونه", callback_data="roomgender:male"),
+            ],
+            [InlineKeyboardButton("🤷 فرقی نداره", callback_data="roomgender:any")],
+        ]
+    )
+
+
+def room_capacity_keyboard() -> InlineKeyboardMarkup:
+    """قدمِ دوم از ساختِ اتاق: ظرفیت. دکمه‌ی «آزاد» هم فنیاً همون ۵
+    نفره، فقط برای کسی که نمی‌خواد رو یه عدد فکر کنه."""
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton("۲ نفر", callback_data="roomcap:2"),
+                InlineKeyboardButton("۳ نفر", callback_data="roomcap:3"),
+            ],
+            [
+                InlineKeyboardButton("۴ نفر", callback_data="roomcap:4"),
+                InlineKeyboardButton("۵ نفر", callback_data="roomcap:5"),
+            ],
+            [InlineKeyboardButton("🔓 آزاد (پیش‌فرض، تا ۵ نفر)", callback_data="roomcap:5")],
         ]
     )
 

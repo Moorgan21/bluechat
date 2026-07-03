@@ -30,6 +30,8 @@ from .connections import async_session
 from .models import (
     BlockedSender,
     ChatMessage,
+    ChatRoom,
+    ChatRoomMember,
     ChatSession,
     CoinTransaction,
     ProfileReport,
@@ -37,6 +39,7 @@ from .models import (
     ReactionTag,
     Report,
     ReportVerdict,
+    RoomGenderPref,
     User,
     Warning,
 )
@@ -326,6 +329,50 @@ async def grant_referral_bonus(inviter_id: int, invitee_id: int) -> int | None:
         except IntegrityError:
             return None
         return inviter.coins
+
+
+# -------------------------------------------------------------------------
+# اتاق‌های چت
+# -------------------------------------------------------------------------
+
+async def create_chat_room(
+    owner_id: int, gender_pref: RoomGenderPref, capacity: int, cost: int
+) -> tuple[ChatRoom | None, str | None]:
+    """اتاقِ چتِ جدید می‌سازه. خروجی: (room, None) در موفقیت، یا
+    (None, error_code) که error_code یکی از "not_found",
+    "has_active_room", "insufficient_coins" است.
+
+    قفلِ ردیفِ owner (همون الگوی grant_referral_bonus) جلوی دوبار-کلیکِ
+    خودِ همین کاربر رو هم می‌گیره: اگه دو تا درخواستِ هم‌زمان برسه، یکی
+    پشتِ لاک منتظر می‌مونه تا اولی active_room_id رو ست کنه، بعد با
+    همون دیدِ تازه می‌بینه دیگه آزاد نیست."""
+    capacity = max(2, min(5, capacity))
+
+    async with async_session() as session:
+        result = await session.execute(
+            select(User).where(User.id == owner_id).with_for_update()
+        )
+        owner = result.scalar_one_or_none()
+        if owner is None:
+            return None, "not_found"
+        if owner.active_room_id is not None:
+            return None, "has_active_room"
+        if owner.coins < cost:
+            return None, "insufficient_coins"
+
+        owner.coins -= cost
+        session.add(CoinTransaction(user_id=owner_id, amount=-cost, reason="chat_room_create"))
+
+        room = ChatRoom(owner_id=owner_id, gender_pref=gender_pref, capacity=capacity)
+        session.add(room)
+        await session.flush()  # room.id لازمه قبل از commit
+
+        session.add(ChatRoomMember(room_id=room.id, user_id=owner_id))
+        owner.active_room_id = room.id
+
+        await session.commit()
+        await session.refresh(room)
+        return room, None
 
 
 async def ban_user(user_id: int) -> None:

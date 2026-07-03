@@ -134,6 +134,13 @@ async def run_search(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
             await query.answer()
             await start_onboarding(update, context)
             return
+        has_active_room = me.active_room_id is not None
+
+    if has_active_room:
+        await query.edit_message_text(
+            "⚠️ الان یه اتاقِ چتِ فعال داری. تا وقتی اونجایی، نمی‌تونی وارد چتِ ۱به۱ بشی."
+        )
+        return
 
     if await rc.get_partner(user_id) is not None:
         await query.edit_message_text("الان توی یه گفتگو هستی.")

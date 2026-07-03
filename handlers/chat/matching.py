@@ -170,9 +170,16 @@ async def start_chat(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
             session, telegram_user.id, telegram_user.username, telegram_user.first_name
         )
         profile_complete = is_profile_complete(user)
+        has_active_room = user.active_room_id is not None
 
     if not profile_complete:
         await start_onboarding(update, context)
+        return
+
+    if has_active_room:
+        await update.effective_message.reply_text(
+            "⚠️ الان یه اتاقِ چتِ فعال داری. تا وقتی اونجایی، نمی‌تونی وارد چتِ ۱به۱ بشی."
+        )
         return
 
     if await rc.get_partner(user_id) is not None:
@@ -227,6 +234,14 @@ async def handle_desired_gender_callback(update: Update, context: ContextTypes.D
     if await rc.is_waiting(user_id):
         await query.edit_message_text("در حال حاضر توی صف انتظاری. کمی صبر کن 🙂")
         return
+
+    async with async_session() as session:
+        me = await session.get(User, user_id)
+        if me is not None and me.active_room_id is not None:
+            await query.edit_message_text(
+                "⚠️ الان یه اتاقِ چتِ فعال داری. تا وقتی اونجایی، نمی‌تونی وارد چتِ ۱به۱ بشی."
+            )
+            return
 
     if desired_gender is not None:
         new_balance = await deduct_coins(user_id, rc.CHAT_COIN_COST, "gender_search")

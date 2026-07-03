@@ -29,6 +29,7 @@ waiting_users    = Gauge("bot_waiting_users", "Users currently waiting for a mat
 ai_queue_size    = Gauge("bot_ai_queue_size", "Pending AI jobs in Redis queue")
 
 spam_blocks      = Counter("bot_spam_blocks_total", "Requests blocked by spam guard", ["kind"])
+rooms_created    = Counter("bot_rooms_created_total", "Total chat rooms created")
 
 
 def start_metrics_server() -> None:
