@@ -162,10 +162,17 @@ async def _handle_capacity_selected(update: Update, context: ContextTypes.DEFAUL
         gender_pref=RoomGenderPref(gender_value),
         capacity=capacity,
         cost=ROOM_CREATE_COST,
+        conflict_check=lambda: _redis_conflict_check(user_id),
     )
 
     if error == "has_active_room":
         await query.edit_message_text("⚠️ همین الان یه اتاقِ فعال داری. اول باید ببندیش یا حذفش کنی.")
+        return
+    if error == "in_1to1":
+        await query.edit_message_text("⚠️ الان توی یه گفتگوی ۱به۱ فعالی. اول اون رو تموم کن.")
+        return
+    if error == "in_queue":
+        await query.edit_message_text("⚠️ الان توی صفِ انتظارِ چتِ ناشناسی. اول از اونجا خارج شو.")
         return
     if error == "insufficient_coins":
         await query.edit_message_text(f"🪙 سکه‌ی کافی نداری! ساختنِ اتاق {ROOM_CREATE_COST} سکه هزینه داره.")
@@ -197,11 +204,27 @@ async def _handle_capacity_selected(update: Update, context: ContextTypes.DEFAUL
 
 async def _check_can_start_room_flow(user_id: int) -> str | None:
     """اگه کاربر آزاد نباشه (توی چتِ ۱به۱، صفِ انتظار، یا از قبل یه
-    اتاقِ فعال داره)، دلیلش رو برمی‌گردونه؛ وگرنه None. چکِ
-    active_room_id واقعی و اتمیک داخلِ create_chat_room انجام می‌شه؛
-    این فقط برای فیدبکِ سریع و بدونِ کسرِ سکه‌ست."""
+    اتاقِ فعال داره)، پیامِ فارسیِ دلیلش رو برمی‌گردونه؛ وگرنه None.
+    این فقط یه پیش‌چکِ UX برای فیدبکِ سریع و بدونِ کسرِ سکه‌ست، قبل از
+    شروعِ فلو؛ چکِ اتمیکِ واقعی (که TOCTOU بینِ این پیش‌چک و لحظه‌ی
+    commit رو می‌بنده) با _redis_conflict_check و پارامترِ
+    conflict_check داخلِ خودِ تراکنشِ create_chat_room/join_chat_room
+    انجام می‌شه."""
     if await rc.get_partner(user_id) is not None:
         return "⚠️ الان توی یه گفتگوی ۱به۱ فعالی. اول اون رو تموم کن."
     if await rc.is_waiting(user_id):
         return "⚠️ الان توی صفِ انتظارِ چتِ ناشناسی. اول از اونجا خارج شو."
+    return None
+
+
+async def _redis_conflict_check(user_id: int) -> str | None:
+    """نسخه‌ی ماشین‌خوانِ همون چکِ بالا، برای تزریق به‌عنوانِ
+    conflict_check داخلِ تراکنشِ create_chat_room/join_chat_room؛ کدِ
+    خام برمی‌گردونه ("in_1to1"/"in_queue")، نه پیامِ فارسی، چون caller
+    (که ممکنه create یا join یا حتی trigger صف باشه) خودش می‌دونه
+    چه پیامی مناسبِ context خودشه."""
+    if await rc.get_partner(user_id) is not None:
+        return "in_1to1"
+    if await rc.is_waiting(user_id):
+        return "in_queue"
     return None

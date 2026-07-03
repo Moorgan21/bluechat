@@ -21,6 +21,7 @@ get_or_create_user که برای استفاده‌ی مشترک بینِ چند 
 """
 
 from datetime import datetime
+from typing import Awaitable, Callable
 
 from geoalchemy2.functions import ST_MakePoint, ST_SetSRID
 from sqlalchemy import delete, func, select
@@ -337,16 +338,30 @@ async def grant_referral_bonus(inviter_id: int, invitee_id: int) -> int | None:
 # -------------------------------------------------------------------------
 
 async def create_chat_room(
-    owner_id: int, gender_pref: RoomGenderPref, capacity: int, cost: int
+    owner_id: int,
+    gender_pref: RoomGenderPref,
+    capacity: int,
+    cost: int,
+    conflict_check: Callable[[], Awaitable[str | None]] | None = None,
 ) -> tuple[ChatRoom | None, str | None]:
     """اتاقِ چتِ جدید می‌سازه. خروجی: (room, None) در موفقیت، یا
     (None, error_code) که error_code یکی از "not_found",
-    "has_active_room", "insufficient_coins" است.
+    "has_active_room", "insufficient_coins"، یا هرچی conflict_check
+    برگردونه (مثلاً "in_1to1"/"in_queue") است.
 
     قفلِ ردیفِ owner (همون الگوی grant_referral_bonus) جلوی دوبار-کلیکِ
     خودِ همین کاربر رو هم می‌گیره: اگه دو تا درخواستِ هم‌زمان برسه، یکی
     پشتِ لاک منتظر می‌مونه تا اولی active_room_id رو ست کنه، بعد با
-    همون دیدِ تازه می‌بینه دیگه آزاد نیست."""
+    همون دیدِ تازه می‌بینه دیگه آزاد نیست.
+
+    conflict_check یه callback اختیاریه که *داخلِ* همین قفل صدا زده
+    می‌شه، بعدِ چکِ active_room_id و قبلِ کسرِ سکه؛ برای اینه که این
+    لایه (Postgres) هیچ importی از redis_client نداشته باشه ولی
+    caller (لایه‌ی هندلر) بتونه یه چکِ Redis-محورِ اتمیک (مثلاً «الان
+    توی چتِ ۱به۱ نیستی؟») رو دقیقاً همون لحظه‌ای که قفل گرفته شده
+    تزریق کنه، نه فقط قبل از این تراکنش. چون خودِ callback هیچ قفلِ
+    جدیدی رو Postgres نمی‌گیره (فقط Redis می‌خونه)، deadlock‌خطری
+    نداره، فقط قفلِ owner رو چند میلی‌ثانیه بیشتر نگه می‌داره."""
     capacity = max(2, min(5, capacity))
 
     async with async_session() as session:
@@ -358,6 +373,10 @@ async def create_chat_room(
             return None, "not_found"
         if owner.active_room_id is not None:
             return None, "has_active_room"
+        if conflict_check is not None:
+            conflict_reason = await conflict_check()
+            if conflict_reason is not None:
+                return None, conflict_reason
         if owner.coins < cost:
             return None, "insufficient_coins"
 
@@ -376,10 +395,15 @@ async def create_chat_room(
         return room, None
 
 
-async def join_chat_room(user_id: int, room_id: int) -> tuple[ChatRoom | None, str | None]:
+async def join_chat_room(
+    user_id: int,
+    room_id: int,
+    conflict_check: Callable[[], Awaitable[str | None]] | None = None,
+) -> tuple[ChatRoom | None, str | None]:
     """کاربر رو به یه اتاقِ مشخص ملحق می‌کنه. خروجی: (room, None) در
     موفقیت، یا (None, error_code) که یکی از "not_found",
-    "room_not_open", "room_full", "has_active_room" است.
+    "room_not_open", "room_full", "has_active_room"، یا هرچی
+    conflict_check برگردونه است.
 
     برخلافِ create_chat_room، اینجا سکه کسر نمی‌شه؛ چرخه‌ی
     پرداخت/بازگشتِ سکه‌ی جستجو کاملاً توسطِ لایه‌ی هندلر (که هم مسیرِ
@@ -387,7 +411,11 @@ async def join_chat_room(user_id: int, room_id: int) -> tuple[ChatRoom | None, s
 
     قفل اول روی ردیفِ room گرفته می‌شه (نه user)، چون رقابتِ اصلی سرِ
     ظرفیتِ همون اتاقه؛ دو تا claim هم‌زمان برای یه اتاق پشتِ سرِ هم صف
-    می‌کشن و هرکدوم با دیدِ تازه (شمارشِ اعضای به‌روز) تصمیم می‌گیرن."""
+    می‌کشن و هرکدوم با دیدِ تازه (شمارشِ اعضای به‌روز) تصمیم می‌گیرن.
+
+    conflict_check همون قراردادِ create_chat_room رو داره: داخلِ قفل،
+    بعدِ چکِ active_room_id، تزریق می‌شه — هم مسیرِ claimِ فوری هم
+    مسیرِ trigger از صف (که هردو از همین تابع رد می‌شن) رو می‌پوشونه."""
     async with async_session() as session:
         room_result = await session.execute(
             select(ChatRoom).where(ChatRoom.id == room_id).with_for_update()
@@ -406,6 +434,10 @@ async def join_chat_room(user_id: int, room_id: int) -> tuple[ChatRoom | None, s
             return None, "not_found"
         if user.active_room_id is not None:
             return None, "has_active_room"
+        if conflict_check is not None:
+            conflict_reason = await conflict_check()
+            if conflict_reason is not None:
+                return None, conflict_reason
 
         member_count = (
             await session.execute(

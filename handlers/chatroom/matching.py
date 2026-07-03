@@ -43,7 +43,7 @@ from db import (
     refund_coins,
 )
 from keyboards import in_room_reply_keyboard, main_reply_keyboard, room_join_gender_keyboard
-from .creation import GENDER_LABELS_FA
+from .creation import GENDER_LABELS_FA, _redis_conflict_check
 
 logger = logging.getLogger(__name__)
 
@@ -94,9 +94,23 @@ async def try_join_room(user_id: int, desired_gender: str, context: ContextTypes
     اتاقِ جدید یا آزادشدنِ جا) یا تایم‌اوتِ ۲دقیقه‌ای می‌مونه."""
     room = await find_open_room_for_join(desired_gender)
     if room is not None:
-        joined_room, error = await join_chat_room(user_id, room.id)
+        joined_room, error = await join_chat_room(
+            user_id, room.id, conflict_check=lambda: _redis_conflict_check(user_id)
+        )
         if joined_room is not None:
             await _notify_room_join_success(user_id, joined_room, context)
+            return
+        if error in ("in_1to1", "in_queue"):
+            # بینِ کلیکِ عضویت و همین لحظه، وارد چتِ ۱به۱ یا صفش شده؛
+            # دیگه معنی نداره اینو تو صفِ اتاق نگه داریم، چون تا وقتی
+            # اونجاست اصلاً مجازِ عضویت نیست. سکه‌ش رو همون‌جا برمی‌گردونیم.
+            await refund_coins(user_id, ROOM_JOIN_COST, "room_join_conflict_refund")
+            try:
+                await context.bot.send_message(
+                    user_id, "⚠️ همون لحظه وارد یه چتِ دیگه شدی، پس جستجو لغو شد و سکه‌ت برگشت."
+                )
+            except TelegramError:
+                logger.warning("امکان اطلاع‌رسانیِ لغوِ عضویت به user_id=%s وجود نداشت.", user_id)
             return
         # یکی زودتر جاشو گرفت (race)؛ به‌جای اینکه اینجا تسلیم بشیم،
         # می‌ریم صف، چون سکه‌ش رو قبلاً پرداخت کرده و باید امتحانِ
@@ -159,7 +173,9 @@ async def try_fill_room_from_queue(room_id: int, context: ContextTypes.DEFAULT_T
             return
 
         candidate_id, gender_bucket = candidate
-        joined_room, error = await join_chat_room(candidate_id, room_id)
+        joined_room, error = await join_chat_room(
+            candidate_id, room_id, conflict_check=lambda: _redis_conflict_check(candidate_id)
+        )
 
         if error in ("room_full", "room_not_open", "not_found"):
             # مشکل از خودِ اتاقه، نه از کاندیدا؛ دست‌نخورده تو صف
@@ -170,7 +186,18 @@ async def try_fill_room_from_queue(room_id: int, context: ContextTypes.DEFAULT_T
         _cancel_room_join_timeout_job(candidate_id, context)
 
         if joined_room is None:
-            continue  # کاندیدای بی‌اعتبار بود (مثلاً has_active_room)، بعدی رو امتحان کن
+            if error in ("in_1to1", "in_queue"):
+                # برخلافِ has_active_room (که یعنی جاش یه‌جایِ دیگه
+                # پره)، اینجا هیچ اتاقی گیرش نیومده، پس باید سکه‌شو
+                # پس بدیم، نه فقط از صف درش بیاریم.
+                await refund_coins(candidate_id, ROOM_JOIN_COST, "room_join_conflict_refund")
+                try:
+                    await context.bot.send_message(
+                        candidate_id, "⚠️ همون لحظه وارد یه چتِ دیگه شدی، پس جستجوی اتاق لغو شد و سکه‌ت برگشت."
+                    )
+                except TelegramError:
+                    logger.warning("امکان اطلاع‌رسانیِ لغوِ عضویت به user_id=%s وجود نداشت.", candidate_id)
+            continue  # کاندیدای بی‌اعتبار بود، بعدی رو امتحان کن
 
         await _notify_room_join_success(candidate_id, joined_room, context)
 
