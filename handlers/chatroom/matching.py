@@ -41,7 +41,7 @@ from db import (
     list_open_room_ids_with_spare_capacity,
     refund_coins,
 )
-from keyboards import main_reply_keyboard, room_join_gender_keyboard
+from keyboards import in_room_reply_keyboard, main_reply_keyboard, room_join_gender_keyboard
 from .creation import GENDER_LABELS_FA
 
 logger = logging.getLogger(__name__)
@@ -192,8 +192,13 @@ def _cancel_room_join_timeout_job(user_id: int, context: ContextTypes.DEFAULT_TY
 
 
 async def _notify_room_join_success(user_id: int, room, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await rc.set_active_room(user_id, room.id)
     gender_label = GENDER_LABELS_FA.get(room.gender_pref.value, room.gender_pref.value)
     try:
-        await context.bot.send_message(user_id, f"✅ به یه اتاقِ {gender_label} ملحق شدی!")
+        await context.bot.send_message(
+            user_id,
+            f"✅ به یه اتاقِ {gender_label} ملحق شدی! از الان هرچی بفرستی توی اتاق relay می‌شه 👇",
+            reply_markup=in_room_reply_keyboard(),
+        )
     except TelegramError:
         logger.warning("امکان اطلاع‌رسانیِ عضویتِ موفق به user_id=%s وجود نداشت.", user_id)

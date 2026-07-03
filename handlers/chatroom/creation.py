@@ -23,7 +23,7 @@ from telegram.ext import ContextTypes
 import metrics
 import redis_client as rc
 from db import RoomGenderPref, create_chat_room
-from keyboards import room_capacity_keyboard, room_gender_keyboard, room_menu_keyboard
+from keyboards import in_room_reply_keyboard, room_capacity_keyboard, room_gender_keyboard, room_menu_keyboard
 
 logger = logging.getLogger(__name__)
 
@@ -129,6 +129,7 @@ async def _handle_capacity_selected(update: Update, context: ContextTypes.DEFAUL
         await query.edit_message_text("مشکلی پیش اومد، دوباره تلاش کن.")
         return
 
+    await rc.set_active_room(user_id, room.id)
     metrics.rooms_created.inc()
     gender_label = GENDER_LABELS_FA.get(gender_value, gender_value)
     await query.edit_message_text(
@@ -136,6 +137,9 @@ async def _handle_capacity_selected(update: Update, context: ContextTypes.DEFAUL
         f"نوع: {gender_label}\n"
         f"ظرفیت: {room.capacity} نفر\n\n"
         "الان توی این اتاق تنها هستی؛ به محض این‌که یه نفر بهش ملحق بشه، بهت خبر می‌دیم."
+    )
+    await context.bot.send_message(
+        user_id, "از الان هرچی بفرستی توی اتاقت relay می‌شه 👇", reply_markup=in_room_reply_keyboard()
     )
 
     # trigger بعد از commitِ کاملِ ساختِ اتاق صدا زده می‌شه (نه داخلِ

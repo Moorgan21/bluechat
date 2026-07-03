@@ -123,6 +123,11 @@ async def test_room_creation_handler_flow_end_to_end(make_user):
     owner = await make_user(coins=25)
     context = MagicMock()
     context.user_data = {}
+    context.bot = MagicMock()
+    context.bot.send_message = AsyncMock()
+    context.job_queue = MagicMock()
+    context.job_queue.run_once = MagicMock()
+    context.job_queue.get_jobs_by_name = MagicMock(return_value=[])
 
     query1 = _make_query(owner.id, "roommenu:create")
     await chatroom.room_menu_callback_router(_make_update(query1), context)

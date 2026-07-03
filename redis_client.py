@@ -590,6 +590,84 @@ async def purge_stale_room_join_queue() -> int:
     return total
 
 
+# آینه‌ی active_room_id در Redis. Postgres همچنان source-of-truthه؛
+# این کلید فقط برای اینکه text_router/media_router به‌ازای هر پیام
+# مجبور نباشن به Postgres سر بزنن (دقیقاً همون فلسفه‌ی KEY_PARTNER).
+# چون آینه‌ست، ممکنه لحظه‌ای عقب یا جلوتر از Postgres باشه:
+#   - عقب‌تر (کلید هنوز ست نشده): کاربر یه پیام رو گم می‌کنه که به منو
+#     می‌افته؛ آزاردهنده ولی بی‌خطر، و با sync دوره‌ای (پایین) جبران می‌شه.
+#   - جلوتر (کلید پاک نشده بعدِ حذفِ اتاق): relay وقتی از Postgres
+#     تناقض ببینه (اتاق نیست/عضو نیست)، خودش همون‌جا کلید رو پاک
+#     می‌کنه و کاربر رو به منو برمی‌گردونه — یعنی خودتصحیح‌شونده‌ست.
+KEY_USER_ACTIVE_ROOM = "bluechat:active_room:{user_id}"
+
+
+async def set_active_room(user_id: int, room_id: int) -> None:
+    await r.set(KEY_USER_ACTIVE_ROOM.format(user_id=user_id), room_id)
+
+
+async def get_active_room(user_id: int) -> Optional[int]:
+    val = await r.get(KEY_USER_ACTIVE_ROOM.format(user_id=user_id))
+    return int(val) if val else None
+
+
+async def clear_active_room(user_id: int) -> None:
+    await r.delete(KEY_USER_ACTIVE_ROOM.format(user_id=user_id))
+
+
+# نگاشتِ پیام‌های اتاق. برخلافِ KEY_MESSAGE_MAPِ زوجیِ ۱به۱، اینجا یه
+# پیام باید برای چند نفر فن‌اوت بشه، پس دو تا کلید لازمه:
+#   RECIPIENTS: (room, sender, sender_msg) -> {recipient_id: [local_msg_ids]}
+#     برای فن‌اوتِ حذف/ویرایش به همه (لیست چون استیکر/ویدیو-نوت caption
+#     ندارن و یه پیامِ برچسبِ اسمِ جدا قبلشون می‌ره؛ پس یه پیامِ منطقی
+#     می‌تونه دو تا message_id واقعی داشته باشه).
+#   ORIGIN: (room, viewer, viewer_local_msg) -> "sender_id:sender_msg_id"
+#     تا هرکی (چه خودِ فرستنده چه هر گیرنده‌ای) بتونه نسخه‌ی محلیِ
+#     خودشو به پیامِ اصلی resolve کنه؛ هم برای ریپلای هم برای تشخیصِ
+#     «این پیام خودمه؟» (وقتی origin == (خودم, همون id)).
+KEY_ROOM_MSG_RECIPIENTS = "bluechat:room_msg_recipients:{room_id}:{sender_id}:{sender_msg_id}"
+KEY_ROOM_MSG_ORIGIN = "bluechat:room_msg_origin:{room_id}:{viewer_id}:{viewer_msg_id}"
+KEY_ROOM_HISTORY = "bluechat:room_history:{room_id}:{user_id}"  # لیستِ message_idهای رسیده به این کاربر در این اتاق
+
+
+async def set_room_msg_recipient_ids(
+    room_id: int, sender_id: int, sender_msg_id: int, recipient_id: int, local_msg_ids: list[int]
+) -> None:
+    key = KEY_ROOM_MSG_RECIPIENTS.format(room_id=room_id, sender_id=sender_id, sender_msg_id=sender_msg_id)
+    await r.hset(key, str(recipient_id), json.dumps(local_msg_ids))
+    await r.expire(key, TTL_MESSAGE_MAP)
+
+
+async def get_room_msg_recipients(room_id: int, sender_id: int, sender_msg_id: int) -> dict[int, list[int]]:
+    key = KEY_ROOM_MSG_RECIPIENTS.format(room_id=room_id, sender_id=sender_id, sender_msg_id=sender_msg_id)
+    raw = await r.hgetall(key)
+    return {int(uid): json.loads(ids_json) for uid, ids_json in raw.items()}
+
+
+async def set_room_msg_origin(
+    room_id: int, viewer_id: int, viewer_msg_id: int, origin_sender_id: int, origin_msg_id: int
+) -> None:
+    await r.set(
+        KEY_ROOM_MSG_ORIGIN.format(room_id=room_id, viewer_id=viewer_id, viewer_msg_id=viewer_msg_id),
+        f"{origin_sender_id}:{origin_msg_id}",
+        ex=TTL_MESSAGE_MAP,
+    )
+
+
+async def get_room_msg_origin(room_id: int, viewer_id: int, viewer_msg_id: int) -> Optional[tuple[int, int]]:
+    val = await r.get(KEY_ROOM_MSG_ORIGIN.format(room_id=room_id, viewer_id=viewer_id, viewer_msg_id=viewer_msg_id))
+    if not val:
+        return None
+    sender_str, msg_str = val.split(":")
+    return int(sender_str), int(msg_str)
+
+
+async def record_room_message(room_id: int, user_id: int, message_id: int) -> None:
+    key = KEY_ROOM_HISTORY.format(room_id=room_id, user_id=user_id)
+    await r.rpush(key, message_id)
+    await r.expire(key, TTL_MESSAGE_MAP)
+
+
 # --- صف جاب‌های AI (برای worker.py) ---
 KEY_AI_JOBS = "bluechat:ai_jobs"
 

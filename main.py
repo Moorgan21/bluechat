@@ -185,6 +185,11 @@ IN_CHAT_KEYBOARD_ROUTES = {
     "🔒 چت امن (فعال)": chat.toggle_secure_chat_button,
 }
 
+IN_ROOM_KEYBOARD_ROUTES = {
+    "🔒 چت امن (غیرفعال)": chatroom.toggle_secure_chat_button,
+    "🔒 چت امن (فعال)": chatroom.toggle_secure_chat_button,
+}
+
 
 async def text_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     text = update.message.text or ""
@@ -240,6 +245,17 @@ async def text_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             await IN_CHAT_KEYBOARD_ROUTES[text](update, context)
             return
         await chat.relay_message(update, context)
+        return
+
+    # قفلِ یک‌اتاقِ-فعال یعنی این با in_active_chat بالا mutually
+    # exclusiveه؛ چکِ Redis (نه Postgres) برای اینکه هر پیام مجبور
+    # نباشه سراغِ دیتابیس بره، دقیقاً مثلِ get_partner.
+    active_room_id = await rc.get_active_room(user_id)
+    if active_room_id is not None:
+        if text in IN_ROOM_KEYBOARD_ROUTES:
+            await IN_ROOM_KEYBOARD_ROUTES[text](update, context)
+            return
+        await chatroom.relay_room_message(update, context, active_room_id)
         return
 
     # اینجا دیگه توی گفتگو نیست، دکمه‌های منوی اصلی فعالن
@@ -307,7 +323,20 @@ async def media_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     if update.message.photo and await profile.handle_profile_photo_input(update, context):
         return
 
+    active_room_id = await rc.get_active_room(user_id)
+    if active_room_id is not None:
+        await chatroom.relay_room_message(update, context, active_room_id)
+        return
+
     await chat.relay_message(update, context)
+
+
+async def edited_message_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """چتِ ۱به۱ و اتاق mutually exclusive‌ن، پس صدا زدنِ هر دو امنه؛
+    هرکدوم اگه precondition خودش (partner/active_room) برقرار نباشه،
+    خودش زود return می‌کنه."""
+    await chat.relay_edit(update, context)
+    await chatroom.relay_room_edit(update, context)
 
 
 # روتر callback_query بر اساس پیشوند callback_data
@@ -472,6 +501,17 @@ async def _room_join_sweep_job(context: ContextTypes.DEFAULT_TYPE) -> None:
     await chatroom.sweep_room_join_queue(context)
 
 
+async def _active_room_mirror_sync_job(context: ContextTypes.DEFAULT_TYPE) -> None:
+    """جهتِ برعکسِ آینه‌ی active_room_id: کاربرهایی که Postgres می‌گه
+    اتاقِ فعال دارن ولی کلیدِ Redis‌شون (مثلاً به‌خاطرِ کرش بینِ commit
+    و ست‌کردنِ آینه) گم شده، اینجا دوباره sync می‌شن."""
+    from db import list_users_with_active_room
+
+    for user_id, room_id in await list_users_with_active_room():
+        if await rc.get_active_room(user_id) is None:
+            await rc.set_active_room(user_id, room_id)
+
+
 async def _expire_chat_requests_job(context: ContextTypes.DEFAULT_TYPE) -> None:
     """هر ۳۰ ثانیه: درخواست‌های چتی که بیشتر از ۲ دقیقه بدونِ پاسخ (نه
     قبول نه رد) موندن رو خودکار لغو می‌کنه، سکه‌ی هزینه‌شده رو به
@@ -533,13 +573,14 @@ def main() -> None:
             media_router,
         )
     )
-    app.add_handler(MessageHandler(filters.UpdateType.EDITED_MESSAGE & filters.TEXT, chat.relay_edit))
+    app.add_handler(MessageHandler(filters.UpdateType.EDITED_MESSAGE & filters.TEXT, edited_message_router))
     app.add_handler(MessageReactionHandler(chat.relay_reaction))
     app.add_handler(CallbackQueryHandler(callback_router))
 
     app.job_queue.run_repeating(_purge_old_messages_job, interval=60 * 60 * 24, first=60 * 5)
     app.job_queue.run_repeating(_purge_stale_queue_job, interval=60 * 3, first=30)
     app.job_queue.run_repeating(_room_join_sweep_job, interval=60, first=40)
+    app.job_queue.run_repeating(_active_room_mirror_sync_job, interval=60 * 2, first=50)
     app.job_queue.run_repeating(_expire_chat_requests_job, interval=30, first=30)
 
     app.job_queue.run_repeating(_update_metrics_job, interval=15, first=10)

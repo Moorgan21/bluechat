@@ -428,6 +428,31 @@ async def get_chat_room(room_id: int) -> ChatRoom | None:
         return await session.get(ChatRoom, room_id)
 
 
+async def get_room_member_ids(room_id: int) -> list[int]:
+    async with async_session() as session:
+        result = await session.execute(
+            select(ChatRoomMember.user_id).where(ChatRoomMember.room_id == room_id)
+        )
+        return [row[0] for row in result.all()]
+
+
+async def get_display_name(user_id: int) -> str | None:
+    async with async_session() as session:
+        result = await session.execute(select(User.display_name).where(User.id == user_id))
+        return result.scalar_one_or_none()
+
+
+async def list_users_with_active_room() -> list[tuple[int, int]]:
+    """برای jobِ sync دوره‌ای: کاربرهایی که Postgres می‌گه اتاقِ فعال
+    دارن، تا اگه آینه‌ی Redis (KEY_USER_ACTIVE_ROOM) عقب افتاده باشه
+    (مثلاً بینِ commit و ست‌کردنِ Redis کرش شده باشه)، دوباره ست بشه."""
+    async with async_session() as session:
+        result = await session.execute(
+            select(User.id, User.active_room_id).where(User.active_room_id.isnot(None))
+        )
+        return [(row[0], row[1]) for row in result.all()]
+
+
 async def find_open_room_for_join(desired_gender: str) -> ChatRoom | None:
     """قدیمی‌ترین اتاقِ بازِ دارایِ ظرفیتِ خالی که با desired_gender
     سازگاره رو برمی‌گردونه (یا None). سازگاری دوطرفه‌ست: desired_gender

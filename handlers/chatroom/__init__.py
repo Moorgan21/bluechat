@@ -14,9 +14,9 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 """پکیجِ هندلرهای اتاقِ چت، مثلِ handlers/chat/ به فایل‌های جدا بر اساسِ
-مسئولیت شکسته می‌شه: creation.py (فلوی ساختِ اتاق) و matching.py
-(فلوی عضویت). relay.py، moderation.py و membership.py توی فازهای
-بعدی اضافه می‌شن.
+مسئولیت شکسته می‌شه: creation.py (فلوی ساختِ اتاق)، matching.py
+(فلوی عضویت)، relay.py (رله‌ی پیام داخلِ اتاق). moderation.py و
+membership.py (ابزارهای owner و ترک) توی فازهای بعدی اضافه می‌شن.
 """
 
 from .creation import (
@@ -24,9 +24,13 @@ from .creation import (
     show_room_menu,
 )
 from .matching import sweep_room_join_queue
+from .relay import relay_room_edit, relay_room_message, toggle_secure_chat_button
 
 __all__ = [
+    "relay_room_edit",
+    "relay_room_message",
     "room_menu_callback_router",
     "show_room_menu",
     "sweep_room_join_queue",
+    "toggle_secure_chat_button",
 ]

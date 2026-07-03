@@ -85,6 +85,21 @@ async def _clean_test_redis():
     await rc.r.connection_pool.disconnect()
 
 
+async def _wipe_test_chat_rooms() -> None:
+    """هر اتاقِ چتِ باقی‌مونده رو کامل پاک می‌کنه. لازمه چون توابعی مثلِ
+    find_open_room_for_join کلِ جدولِ chat_rooms رو (نه فقط ردیف‌های
+    همون تست) می‌بینن؛ یه اتاقِ یتیمِ باقی‌مونده از یه تستِ قبلی (مثلاً
+    به‌خاطرِ fail شدنِ assertion قبل از رسیدن به cleanupِ خودِ اون تست)
+    می‌تونه نتیجه‌ی تست‌های بعدی رو خراب کنه."""
+    from sqlalchemy import delete, update
+
+    async with db.async_session() as session:
+        await session.execute(update(db.User).values(active_room_id=None))
+        await session.execute(delete(db.ChatRoomMember))
+        await session.execute(delete(db.ChatRoom))
+        await session.commit()
+
+
 @pytest.fixture(autouse=True)
 async def _dispose_db_engine_after_test():
     """pytest-asyncio (در حالتِ auto) برای هر تست یه event loopِ جدید
@@ -93,8 +108,17 @@ async def _dispose_db_engine_after_test():
     تستِ دوم به بعد با خطای «cannot perform operation: another operation
     is in progress» / «Event loop is closed» کرش می‌کنه، چون می‌خواد از
     اتصالِ loopِ قبلی (که بسته شده) استفاده کنه. dispose بعد از هر تست
-    یعنی تستِ بعدی مجبوره اتصالِ تازه بسازه، بسته به loopِ خودش."""
+    یعنی تستِ بعدی مجبوره اتصالِ تازه بسازه، بسته به loopِ خودش.
+
+    wipeِ اتاق‌های چت هم عمداً همینجا (نه یه فیکسچرِ جدا) انجام می‌شه:
+    یه فیکسچرِ async مستقلِ دیگه با setup/teardownِ خودش امتحان شد و
+    باعثِ همین خطای «another operation is in progress» می‌شد، احتمالاً
+    به‌خاطرِ تداخلِ ترتیبِ فیکسچرهای async متعدد با loopِ per-testِ
+    pytest-asyncio. ادغام‌کردنِ wipe داخلِ همین فیکسچرِ ثابت‌شده امن‌تر
+    از اضافه‌کردنِ یه فیکسچرِ async جدید بود."""
+    await _wipe_test_chat_rooms()
     yield
+    await _wipe_test_chat_rooms()
     await db.engine.dispose()
     if db._read_engine is not db.engine:
         await db._read_engine.dispose()

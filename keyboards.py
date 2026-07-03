@@ -59,6 +59,14 @@ def in_chat_reply_keyboard(secure: bool = False) -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
 
+def in_room_reply_keyboard(secure: bool = False) -> ReplyKeyboardMarkup:
+    """کیبورد پایین صفحه حینِ حضور در یه اتاقِ چت. دکمه‌های owner
+    (بستن/حذفِ اتاق) توی فازِ ۵ اضافه می‌شن؛ فعلاً فقط چتِ امن (که
+    per-user‌ه، پس همون فلگِ ۱به۱ رو به اشتراک می‌ذاره، نه چیزِ جدا)."""
+    secure_label = "🔒 چت امن (فعال)" if secure else "🔒 چت امن (غیرفعال)"
+    return ReplyKeyboardMarkup([[KeyboardButton(secure_label)]], resize_keyboard=True)
+
+
 def profile_inline_keyboard(is_own_profile: bool = True, reported_id: int | None = None) -> InlineKeyboardMarkup:
     if is_own_profile:
         rows = [
