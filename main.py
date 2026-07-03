@@ -511,7 +511,7 @@ def main() -> None:
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_router))
     app.add_handler(
         MessageHandler(
-            (filters.PHOTO | filters.VOICE | filters.VIDEO | filters.Sticker.ALL
+            (filters.PHOTO | filters.VOICE | filters.AUDIO | filters.VIDEO | filters.Sticker.ALL
              | filters.VIDEO_NOTE | filters.Document.ALL | filters.ANIMATION)
             & ~filters.COMMAND,
             media_router,

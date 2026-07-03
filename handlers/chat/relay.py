@@ -98,6 +98,8 @@ async def relay_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             sent_msg = await context.bot.send_sticker(partner_id, msg.sticker.file_id, reply_parameters=reply_params, protect_content=secure)
         elif msg.voice:
             sent_msg = await context.bot.send_voice(partner_id, msg.voice.file_id, caption=msg.caption, reply_parameters=reply_params, protect_content=secure)
+        elif msg.audio:
+            sent_msg = await context.bot.send_audio(partner_id, msg.audio.file_id, caption=msg.caption, reply_parameters=reply_params, protect_content=secure)
         elif msg.video:
             sent_msg = await context.bot.send_video(partner_id, msg.video.file_id, caption=msg.caption, reply_parameters=reply_params, protect_content=secure)
         elif msg.video_note:
@@ -126,6 +128,7 @@ async def relay_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
                     "photo" if msg.photo else
                     "sticker" if msg.sticker else
                     "voice" if msg.voice else
+                    "audio" if msg.audio else
                     "video" if msg.video else
                     "video_note" if msg.video_note else
                     "document" if msg.document else
