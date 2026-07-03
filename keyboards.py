@@ -39,9 +39,8 @@ except Exception:
 def main_reply_keyboard() -> ReplyKeyboardMarkup:
     """کیبورد پایین صفحه؛ فقط وقتی نشون داده می‌شه که کاربر توی گفتگوی فعال نباشه."""
     keyboard = [
-        [KeyboardButton("💬 وصل کن به یه ناشناس!")],
+        [KeyboardButton("💬 وصل کن به یه ناشناس!"), KeyboardButton("🏠 اتاق چت")],
         [KeyboardButton("💬 جستجوی کاربران 🔮"), KeyboardButton("📍 افراد نزدیک 🛰")],
-        [KeyboardButton("🏠 اتاق چت")],
         [KeyboardButton("💰 سکه"), KeyboardButton("👤 پروفایل"), KeyboardButton("⚙️ تنظیمات"), KeyboardButton("🤔 راهنما")],
         [KeyboardButton("🔗 معرفی به دوستان (سکه رایگان)")],
         [KeyboardButton("🥷 لینک ناشناس من")],
