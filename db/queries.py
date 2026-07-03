@@ -494,6 +494,51 @@ async def leave_chat_room(user_id: int) -> tuple[dict | None, str | None]:
         }, None
 
 
+async def delete_chat_room(owner_id: int) -> tuple[dict | None, str | None]:
+    """owner اتاقِ خودش رو کامل حذف می‌کنه: همون منطقِ مسیرِ auto-delete
+    در leave_chat_room (status→deleted، پاک‌کردنِ active_room_id همه‌ی
+    اعضا، حذفِ ردیف‌های ChatRoomMember، همه تو یه تراکنش)، فقط
+    trigger‌ش دکمه‌ی owner‌ه نه شمارشِ اعضا. قفلِ روی ردیفِ room همون
+    محافظتی رو می‌ده که join_chat_room/leave_chat_room دارن: هر
+    عملیاتِ هم‌زمانِ دیگه روی همین اتاق (join/leave) پشتِ این قفل صف
+    می‌کشه، پس لیستِ اعضایی که می‌خونیم قطعاً به‌روزه.
+
+    خروجی: (info, None) در موفقیت، یا (None, error_code) که یکی از
+    "not_found" (اتاقِ فعالی نداره)، "not_owner" (اتاقِ خودش نیست) است.
+    info شاملِ room_id و member_ids (همه‌ی کسانی که باید آینه‌ی Redis
+    و پیامِ سیستمی بگیرن، شاملِ خودِ owner) است."""
+    async with async_session() as session:
+        owner_peek = await session.get(User, owner_id)
+        if owner_peek is None or owner_peek.active_room_id is None:
+            return None, "not_found"
+        room_id = owner_peek.active_room_id
+
+        room_result = await session.execute(
+            select(ChatRoom).where(ChatRoom.id == room_id).with_for_update()
+        )
+        room = room_result.scalar_one_or_none()
+        if room is None:
+            return None, "not_found"
+        if room.owner_id != owner_id:
+            return None, "not_owner"
+
+        member_ids_result = await session.execute(
+            select(ChatRoomMember.user_id).where(ChatRoomMember.room_id == room_id)
+        )
+        member_ids = [row[0] for row in member_ids_result.all()]
+
+        for uid in member_ids:
+            member_user = await session.get(User, uid)
+            if member_user is not None:
+                member_user.active_room_id = None
+
+        room.status = RoomStatus.deleted
+        await session.execute(delete(ChatRoomMember).where(ChatRoomMember.room_id == room_id))
+
+        await session.commit()
+        return {"room_id": room_id, "member_ids": member_ids}, None
+
+
 async def get_chat_room(room_id: int) -> ChatRoom | None:
     async with async_session() as session:
         return await session.get(ChatRoom, room_id)

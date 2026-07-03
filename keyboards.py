@@ -60,15 +60,31 @@ def in_chat_reply_keyboard(secure: bool = False) -> ReplyKeyboardMarkup:
 
 
 def in_room_reply_keyboard(secure: bool = False, is_owner: bool = False) -> ReplyKeyboardMarkup:
-    """کیبورد پایین صفحه حینِ حضور در یه اتاقِ چت. دکمه‌ی «ترک اتاق»
-    فقط برای عضوِ عادیه، نه owner (owner به‌جاش باید ببنده/حذف کنه —
-    دکمه‌های اون توی فازِ ۵ اضافه می‌شن). چتِ امن per-userه، پس همون
-    فلگِ ۱به۱ رو به اشتراک می‌ذاره، نه چیزِ جدا."""
+    """کیبورد پایین صفحه حینِ حضور در یه اتاقِ چت. owner دکمه‌ی «ترک»
+    نداره (نمی‌تونه ترک کنه)، به‌جاش «حذفِ اتاق» می‌بینه — این تنها
+    راهِ خروجِ owner است، پس با اولویت اضافه شده؛ بقیه‌ی ابزارهای owner
+    (بستن/بازکردن، حذفِ پیامِ دیگران، اخراج) بعداً اضافه می‌شن. چتِ
+    امن per-userه، پس همون فلگِ ۱به۱ رو به اشتراک می‌ذاره، نه چیزِ جدا."""
     secure_label = "🔒 چت امن (فعال)" if secure else "🔒 چت امن (غیرفعال)"
     rows = [[KeyboardButton(secure_label)]]
-    if not is_owner:
+    if is_owner:
+        rows.append([KeyboardButton("🗑 حذف اتاق")])
+    else:
         rows.append([KeyboardButton("🚪 ترک اتاق")])
     return ReplyKeyboardMarkup(rows, resize_keyboard=True)
+
+
+def room_delete_confirm_keyboard() -> InlineKeyboardMarkup:
+    """قبل از حذفِ قطعیِ اتاق (غیرقابلِ بازگشت) از owner تاییدِ صریح
+    می‌گیره، هم‌راستا با end_chat_confirm_keyboard برای پایانِ چتِ ۱به۱."""
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton("✅ بله، حذف کن", callback_data="roomdelete:confirm"),
+                InlineKeyboardButton("❌ نه، پشیمون شدم", callback_data="roomdelete:cancel"),
+            ]
+        ]
+    )
 
 
 def profile_inline_keyboard(is_own_profile: bool = True, reported_id: int | None = None) -> InlineKeyboardMarkup:

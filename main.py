@@ -189,6 +189,7 @@ IN_ROOM_KEYBOARD_ROUTES = {
     "🔒 چت امن (غیرفعال)": chatroom.toggle_secure_chat_button,
     "🔒 چت امن (فعال)": chatroom.toggle_secure_chat_button,
     "🚪 ترک اتاق": chatroom.leave_room_button,
+    "🗑 حذف اتاق": chatroom.delete_room_button,
 }
 
 
@@ -427,6 +428,8 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         or data.startswith("roomjoingender:")
     ):
         await chatroom.room_menu_callback_router(update, context)
+    elif data.startswith("roomdelete:"):
+        await chatroom.delete_room_confirm_callback(update, context)
     elif data == "generic:cancel":
         await update.callback_query.answer()
         context.user_data.pop("awaiting_note_target", None)
