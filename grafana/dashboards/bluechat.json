@@ -164,7 +164,8 @@
     { "id": 103, "type": "row", "title": "📈 ترافیک ربات", "gridPos": {"x": 0, "y": 34, "w": 24, "h": 1}, "collapsed": false },
 
     {
-      "id": 7, "type": "timeseries", "title": "پیام‌های relay شده در ثانیه",
+      "id": 7, "type": "timeseries", "title": "پیام‌های relay شده در ثانیه (چت ۱به۱)",
+      "description": "از ۲۰۲۶-۰۷-۰۳: پیام‌های اتاقِ چت دیگه اینجا حساب نمی‌شن (قبلش اشتباهاً دابل‌کانت می‌شدن). برای ترافیکِ اتاق پنلِ «پیام‌های اتاق در ثانیه» رو ببین.",
       "gridPos": {"x": 0, "y": 35, "w": 12, "h": 8},
       "targets": [{"expr": "rate(bot_messages_relayed_total[1m])", "legendFormat": "msg/s", "datasource": "Prometheus"}],
       "options": {"tooltip": {"mode": "single"}},
@@ -270,6 +271,50 @@
       "gridPos": {"x": 12, "y": 67, "w": 12, "h": 8},
       "targets": [{"expr": "rate(redis_commands_processed_total[1m])", "legendFormat": "cmd/s", "datasource": "Prometheus"}],
       "fieldConfig": {"defaults": {"unit": "reqps", "color": {"fixedColor": "red", "mode": "fixed"}, "custom": {"fillOpacity": 20, "lineWidth": 2}}}
+    },
+
+    { "id": 107, "type": "row", "title": "🏠 اتاق‌های چت", "gridPos": {"x": 0, "y": 75, "w": 24, "h": 1}, "collapsed": false },
+
+    {
+      "id": 300, "type": "text", "title": "",
+      "description": "یادداشتِ تاریخچه‌ای — این پنل صرفاً توضیحیه، منبعِ دیتا نداره.",
+      "gridPos": {"x": 0, "y": 76, "w": 24, "h": 3},
+      "options": {
+        "mode": "markdown",
+        "content": "🗓 **۲۰۲۶-۰۷-۰۳** — اضافه‌شدنِ ویژگیِ «اتاقِ چت». همون تاریخ، `bot_messages_relayed_total` دیگه پیام‌های اتاقِ چت رو حساب نمی‌کنه (قبلش اشتباهاً دابل‌کانت می‌شد)؛ اون ترافیک از این تاریخ به بعد فقط زیرِ `bot_room_messages_relayed_total` (پنلِ زیر) دیده می‌شه. اگه نمودارِ «چتِ ۱به۱» از این تاریخ افتِ پله‌ای نشون می‌ده، همینه، نه یه باگ."
+      }
+    },
+    {
+      "id": 301, "type": "timeseries", "title": "پیام‌های اتاق در ثانیه",
+      "gridPos": {"x": 0, "y": 79, "w": 12, "h": 8},
+      "targets": [{"expr": "rate(bot_room_messages_relayed_total[1m])", "legendFormat": "msg/s", "datasource": "Prometheus"}],
+      "options": {"tooltip": {"mode": "single"}},
+      "fieldConfig": {"defaults": {"unit": "reqps", "color": {"fixedColor": "purple", "mode": "fixed"}, "custom": {"fillOpacity": 25, "lineWidth": 2, "spanNulls": false}}}
+    },
+    {
+      "id": 302, "type": "timeseries", "title": "ساخت / عضویتِ اتاق در دقیقه",
+      "gridPos": {"x": 12, "y": 79, "w": 12, "h": 8},
+      "targets": [
+        {"expr": "rate(bot_rooms_created_total[5m]) * 60", "legendFormat": "ساخته‌شده", "datasource": "Prometheus"},
+        {"expr": "rate(bot_room_joins_total[5m]) * 60", "legendFormat": "عضویت", "datasource": "Prometheus"}
+      ],
+      "options": {"tooltip": {"mode": "multi"}},
+      "fieldConfig": {"defaults": {"unit": "short", "custom": {"fillOpacity": 20, "lineWidth": 2}}, "overrides": [{"matcher": {"id": "byName", "options": "ساخته‌شده"}, "properties": [{"id": "color", "value": {"fixedColor": "blue", "mode": "fixed"}}]}, {"matcher": {"id": "byName", "options": "عضویت"}, "properties": [{"id": "color", "value": {"fixedColor": "green", "mode": "fixed"}}]}]}
+    },
+    {
+      "id": 303, "type": "stat", "title": "کلِ اتاق‌های ساخته‌شده",
+      "gridPos": {"x": 0, "y": 87, "w": 6, "h": 5},
+      "targets": [{"expr": "bot_rooms_created_total", "datasource": "Prometheus"}],
+      "options": {"colorMode": "background", "graphMode": "none", "reduceOptions": {"calcs": ["lastNotNull"]}},
+      "fieldConfig": {"defaults": {"color": {"fixedColor": "blue", "mode": "fixed"}, "noValue": "0"}}
+    },
+    {
+      "id": 304, "type": "stat", "title": "حذفِ خودکارِ اتاق (۲۴ ساعت)",
+      "description": "اتاق‌هایی که بعدِ ترک/اخراجِ همه‌ی اعضا فقط با owner باقی موندن و خودکار حذف شدن",
+      "gridPos": {"x": 6, "y": 87, "w": 6, "h": 5},
+      "targets": [{"expr": "increase(bot_room_auto_deleted_total[24h])", "datasource": "Prometheus"}],
+      "options": {"colorMode": "background", "graphMode": "area", "reduceOptions": {"calcs": ["lastNotNull"]}},
+      "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": 0}, {"color": "orange", "value": 5}]}, "noValue": "0"}}
     }
 
   ]
