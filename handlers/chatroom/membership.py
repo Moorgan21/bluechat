@@ -23,6 +23,7 @@ from telegram import Update
 from telegram.error import TelegramError
 from telegram.ext import ContextTypes
 
+import metrics
 import redis_client as rc
 from db import get_display_name, leave_chat_room
 from keyboards import main_reply_keyboard
@@ -49,6 +50,7 @@ async def leave_room_button(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     await rc.clear_active_room(user_id)
 
     if result["auto_deleted"]:
+        metrics.room_auto_deleted.inc()
         # remaining_member_ids اینجا یعنی «کسی که قبل از حذفِ خودکار
         # هنوز تو اتاق بود» — یعنی فقط owner.
         for uid in result["remaining_member_ids"]:

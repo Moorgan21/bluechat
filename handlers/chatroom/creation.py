@@ -22,23 +22,68 @@ from telegram.ext import ContextTypes
 
 import metrics
 import redis_client as rc
-from db import RoomGenderPref, create_chat_room
+from db import RoomGenderPref, RoomStatus, create_chat_room, get_chat_room, get_room_member_ids
 from keyboards import in_room_reply_keyboard, room_capacity_keyboard, room_gender_keyboard, room_menu_keyboard
 
 logger = logging.getLogger(__name__)
 
 ROOM_CREATE_COST = 20
 GENDER_LABELS_FA = {"male": "پسرونه", "female": "دخترونه", "any": "فرقی نداره"}
+ROOM_STATUS_LABELS_FA = {"open": "باز 🟢", "closed": "بسته 🔒"}
 
 _CREATE_GENDER_KEY = "room_create_gender"
 
 
 async def show_room_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """ورودیِ منوی اتاق: هم از دکمه‌ی «🏠 اتاق چت» صدا زده می‌شه هم از
+    دستورِ /room. اگه کاربر از قبل یه اتاقِ فعال داره، به‌جای منوی
+    ایجاد/عضویت، وضعیتِ همون اتاق رو نشون می‌ده (و کیبوردِ پایین صفحه
+    رو با وضعیتِ واقعی sync می‌کنه — مفید برای وقتی کیبورد به هر
+    دلیلی از حالتِ واقعی عقب افتاده)."""
+    user_id = update.effective_user.id
+    active_room_id = await rc.get_active_room(user_id)
+    if active_room_id is not None:
+        await _show_active_room_status(update, context, user_id, active_room_id)
+        return
+
     text = "🏠 اتاق چت\n\nمی‌تونی یه اتاقِ گروهیِ دائمی بسازی یا به یکی ملحق بشی."
     if update.callback_query:
         await update.callback_query.edit_message_text(text, reply_markup=room_menu_keyboard())
     else:
         await update.message.reply_text(text, reply_markup=room_menu_keyboard())
+
+
+async def _show_active_room_status(
+    update: Update, context: ContextTypes.DEFAULT_TYPE, user_id: int, room_id: int
+) -> None:
+    room = await get_chat_room(room_id)
+    if room is None or room.status == RoomStatus.deleted:
+        # آینه‌ی Redis عقب‌مونده؛ خودتصحیحی و برگشت به منوی معمولی
+        await rc.clear_active_room(user_id)
+        await show_room_menu(update, context)
+        return
+
+    member_ids = await get_room_member_ids(room_id)
+    is_owner = room.owner_id == user_id
+    gender_label = GENDER_LABELS_FA.get(room.gender_pref.value, room.gender_pref.value)
+    status_label = ROOM_STATUS_LABELS_FA.get(room.status.value, room.status.value)
+
+    text = (
+        "🏠 اتاقِ فعلیِ تو\n\n"
+        f"نوع: {gender_label}\n"
+        f"اعضا: {len(member_ids)} از {room.capacity} نفر\n"
+        f"وضعیت: {status_label}\n"
+        f"نقشِ تو: {'owner (مالک)' if is_owner else 'عضو'}"
+    )
+    keyboard = in_room_reply_keyboard(
+        secure=await rc.is_secure_chat(user_id),
+        is_owner=is_owner,
+        room_open=room.status == RoomStatus.open,
+    )
+    if update.callback_query:
+        await update.callback_query.message.reply_text(text, reply_markup=keyboard)
+    else:
+        await update.message.reply_text(text, reply_markup=keyboard)
 
 
 async def room_menu_callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

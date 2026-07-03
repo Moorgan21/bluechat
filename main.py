@@ -192,6 +192,7 @@ IN_ROOM_KEYBOARD_ROUTES = {
     "🗑 حذف اتاق": chatroom.delete_room_button,
     "🔒 بستن اتاق": chatroom.close_room_button,
     "🔓 بازکردن اتاق": chatroom.reopen_room_button,
+    "🏠 اتاق چت": chatroom.show_room_menu,
 }
 
 
@@ -479,6 +480,7 @@ async def post_init(application: Application) -> None:
         BotCommand("help",     "راهنما"),
         BotCommand("report",   "گزارش تخلف"),
         BotCommand("silent",   "حالت سکوت پروفایل عمومی"),
+        BotCommand("room",     "وضعیتِ اتاقِ چتِ فعلی یا ساختن/عضویت"),
     ])
 
 
@@ -569,6 +571,7 @@ def main() -> None:
 
     app.add_handler(CommandHandler("silent", public_profile.toggle_silent_mode))
     app.add_handler(CommandHandler("settings", settings.show_settings))
+    app.add_handler(CommandHandler("room", chatroom.show_room_menu))
     app.add_handler(MessageHandler(filters.Regex(r"^/u(?:ser)?_\S+"), user_profile_command))
 
     app.add_handler(MessageHandler(filters.LOCATION, nearby.handle_location_message))

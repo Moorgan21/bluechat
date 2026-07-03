@@ -31,6 +31,7 @@ from telegram import Update
 from telegram.error import TelegramError
 from telegram.ext import ContextTypes
 
+import metrics
 import redis_client as rc
 from db import (
     RoomStatus,
@@ -193,6 +194,7 @@ def _cancel_room_join_timeout_job(user_id: int, context: ContextTypes.DEFAULT_TY
 
 async def _notify_room_join_success(user_id: int, room, context: ContextTypes.DEFAULT_TYPE) -> None:
     await rc.set_active_room(user_id, room.id)
+    metrics.room_joins.inc()
     gender_label = GENDER_LABELS_FA.get(room.gender_pref.value, room.gender_pref.value)
     try:
         await context.bot.send_message(

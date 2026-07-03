@@ -199,7 +199,7 @@ async def _relay_new_message(update: Update, context: ContextTypes.DEFAULT_TYPE,
     await rc.record_room_message(room.id, user_id, msg.message_id)
 
     if delivered:
-        metrics.messages_relayed.inc()
+        metrics.room_messages.inc()
 
 
 async def _handle_delete_command(update: Update, context: ContextTypes.DEFAULT_TYPE, room) -> None:
@@ -283,6 +283,7 @@ async def _handle_kick_command(update: Update, context: ContextTypes.DEFAULT_TYP
         pass
 
     if result["auto_deleted"]:
+        metrics.room_auto_deleted.inc()
         for uid in result["remaining_member_ids"]:  # این حالت یعنی فقط owner مونده
             await rc.clear_active_room(uid)
             try:
