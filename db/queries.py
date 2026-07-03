@@ -539,6 +539,107 @@ async def delete_chat_room(owner_id: int) -> tuple[dict | None, str | None]:
         return {"room_id": room_id, "member_ids": member_ids}, None
 
 
+async def kick_room_member(owner_id: int, target_user_id: int) -> tuple[dict | None, str | None]:
+    """owner یه عضوِ عادیِ اتاقِ خودش رو اخراج می‌کنه. منطقش تقریباً
+    عینِ leave_chat_room است (همون قفلِ room-then-user، همون چکِ
+    auto-delete وقتی فقط owner بمونه)، با این تفاوت که اینجا owner
+    تصمیم می‌گیره کی بره، نه خودِ همون فرد.
+
+    خروجی: (info, None) در موفقیت، یا (None, error_code) که یکی از
+    "not_found" (owner اتاقِ فعالی نداره)، "not_owner" (caller مالکِ
+    این اتاق نیست)، "cannot_kick_self"، "not_a_member" (target واقعاً
+    عضوِ همین اتاق نیست) است."""
+    async with async_session() as session:
+        owner_peek = await session.get(User, owner_id)
+        if owner_peek is None or owner_peek.active_room_id is None:
+            return None, "not_found"
+        room_id = owner_peek.active_room_id
+
+        room_result = await session.execute(
+            select(ChatRoom).where(ChatRoom.id == room_id).with_for_update()
+        )
+        room = room_result.scalar_one_or_none()
+        if room is None:
+            return None, "not_found"
+        if room.owner_id != owner_id:
+            return None, "not_owner"
+        if target_user_id == owner_id:
+            return None, "cannot_kick_self"
+
+        target_result = await session.execute(
+            select(User).where(User.id == target_user_id).with_for_update()
+        )
+        target = target_result.scalar_one_or_none()
+        if target is None or target.active_room_id != room_id:
+            return None, "not_a_member"
+
+        await session.execute(
+            delete(ChatRoomMember).where(
+                ChatRoomMember.room_id == room_id, ChatRoomMember.user_id == target_user_id
+            )
+        )
+        target.active_room_id = None
+
+        remaining_count = (
+            await session.execute(
+                select(func.count()).select_from(ChatRoomMember).where(ChatRoomMember.room_id == room_id)
+            )
+        ).scalar_one()
+        remaining_ids_result = await session.execute(
+            select(ChatRoomMember.user_id).where(ChatRoomMember.room_id == room_id)
+        )
+        remaining_member_ids = [row[0] for row in remaining_ids_result.all()]
+
+        auto_deleted = remaining_count <= 1
+        if auto_deleted:
+            room.status = RoomStatus.deleted
+            for uid in remaining_member_ids:
+                remaining_user = await session.get(User, uid)
+                if remaining_user is not None:
+                    remaining_user.active_room_id = None
+            await session.execute(delete(ChatRoomMember).where(ChatRoomMember.room_id == room_id))
+
+        await session.commit()
+        return {
+            "room_id": room_id,
+            "target_user_id": target_user_id,
+            "auto_deleted": auto_deleted,
+            "remaining_member_ids": remaining_member_ids,
+        }, None
+
+
+async def set_room_open_status(owner_id: int, is_open: bool) -> tuple[dict | None, str | None]:
+    """owner اتاقشو می‌بنده یا دوباره باز می‌کنه. برخلافِ حذف/اخراج،
+    اینجا هیچ عضویتی تغییر نمی‌کنه؛ فقط status عوض می‌شه (open<->closed)
+    که relay.py قبل از رله‌ی هر پیام چکش می‌کنه.
+
+    خروجی: (info, None) در موفقیت، یا (None, error_code) که یکی از
+    "not_found"، "not_owner" است."""
+    async with async_session() as session:
+        owner_peek = await session.get(User, owner_id)
+        if owner_peek is None or owner_peek.active_room_id is None:
+            return None, "not_found"
+        room_id = owner_peek.active_room_id
+
+        room_result = await session.execute(
+            select(ChatRoom).where(ChatRoom.id == room_id).with_for_update()
+        )
+        room = room_result.scalar_one_or_none()
+        if room is None or room.status == RoomStatus.deleted:
+            return None, "not_found"
+        if room.owner_id != owner_id:
+            return None, "not_owner"
+
+        room.status = RoomStatus.open if is_open else RoomStatus.closed
+        await session.commit()
+
+        member_ids_result = await session.execute(
+            select(ChatRoomMember.user_id).where(ChatRoomMember.room_id == room_id)
+        )
+        member_ids = [row[0] for row in member_ids_result.all()]
+        return {"room_id": room_id, "member_ids": member_ids}, None
+
+
 async def get_chat_room(room_id: int) -> ChatRoom | None:
     async with async_session() as session:
         return await session.get(ChatRoom, room_id)

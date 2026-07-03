@@ -668,6 +668,34 @@ async def record_room_message(room_id: int, user_id: int, message_id: int) -> No
     await r.expire(key, TTL_MESSAGE_MAP)
 
 
+async def pop_room_history(room_id: int, user_id: int) -> list[int]:
+    key = KEY_ROOM_HISTORY.format(room_id=room_id, user_id=user_id)
+    ids = await r.lrange(key, 0, -1)
+    await r.delete(key)
+    return [int(i) for i in ids]
+
+
+# بعد از حذفِ اتاق، ChatRoomMemberِ Postgres پاک می‌شه، پس دیگه راهی
+# نیست بفهمیم «کیا عضو بودن» تا تاریخچه‌شون رو پاک کنیم. این کلید
+# لیستِ اعضا رو لحظه‌ی حذف نگه می‌داره تا دکمه‌ی «پاک‌کردنِ تاریخچه»
+# (که به owner نشون داده می‌شه) بدونه کجا رو بگرده. TTLش با
+# TTL_MESSAGE_MAP یکیه چون بعدِ اون تلگرام دیگه اجازه‌ی حذف نمی‌ده.
+KEY_DELETED_ROOM_MEMBERS = "bluechat:deleted_room_members:{room_id}"
+
+
+async def store_deleted_room_members(room_id: int, member_ids: list[int]) -> None:
+    await r.set(
+        KEY_DELETED_ROOM_MEMBERS.format(room_id=room_id),
+        json.dumps(member_ids),
+        ex=TTL_MESSAGE_MAP,
+    )
+
+
+async def get_deleted_room_members(room_id: int) -> Optional[list[int]]:
+    val = await r.get(KEY_DELETED_ROOM_MEMBERS.format(room_id=room_id))
+    return json.loads(val) if val else None
+
+
 # --- صف جاب‌های AI (برای worker.py) ---
 KEY_AI_JOBS = "bluechat:ai_jobs"
 

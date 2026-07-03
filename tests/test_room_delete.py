@@ -162,11 +162,19 @@ async def test_delete_room_confirm_removes_room_and_notifies_everyone(make_user)
     assert await rc.get_active_room(owner.id) is None
     assert await rc.get_active_room(member.id) is None
 
-    calls = {c.args[0]: c.args[1] for c in context.bot.send_message.await_args_list}
-    assert "اتاقت حذف شد" in calls[owner.id]
-    assert "توسطِ owner حذف شد" in calls[member.id]
-    for call in context.bot.send_message.await_args_list:
-        assert call.kwargs.get("reply_markup") is not None  # همه کیبوردِ منو رو پس گرفتن
+    calls = context.bot.send_message.await_args_list
+    owner_texts = [c.args[1] for c in calls if c.args[0] == owner.id]
+    member_texts = [c.args[1] for c in calls if c.args[0] == member.id]
+
+    assert any("اتاقت حذف شد" in t for t in owner_texts)
+    assert any("توسطِ owner حذف شد" in t for t in member_texts)
+    assert any("پاک کنم؟" in t for t in owner_texts)  # پیشنهادِ پاک‌سازیِ تاریخچه فقط به owner
+
+    for call in calls:
+        assert call.kwargs.get("reply_markup") is not None  # همه پیام‌ها یه کیبورد دارن
+
+    stored_members = await rc.get_deleted_room_members(room.id)
+    assert sorted(stored_members) == sorted([owner.id, member.id])
 
     async with db.async_session() as session:
         r = await session.get(db.ChatRoom, room.id)

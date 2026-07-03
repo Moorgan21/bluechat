@@ -79,9 +79,14 @@ async def relay_room_message(update: Update, context: ContextTypes.DEFAULT_TYPE,
 
     msg = update.message
 
-    if msg.text and msg.text.strip().lower() in ("حذف", "del") and msg.reply_to_message:
-        await _handle_delete_command(update, context, room)
-        return
+    if msg.text and msg.reply_to_message:
+        command = msg.text.strip().lower()
+        if command in ("حذف", "del"):
+            await _handle_delete_command(update, context, room)
+            return
+        if command == "اخراج" and user_id == room.owner_id:
+            await _handle_kick_command(update, context, room)
+            return
 
     await _relay_new_message(update, context, room, member_ids)
 
@@ -139,14 +144,17 @@ async def toggle_secure_chat_button(update: Update, context: ContextTypes.DEFAUL
     user_id = update.effective_user.id
     room_id = await rc.get_active_room(user_id)
     is_owner = False
+    room_open = True
     if room_id is not None:
         room = await get_chat_room(room_id)
-        is_owner = room is not None and room.owner_id == user_id
+        if room is not None:
+            is_owner = room.owner_id == user_id
+            room_open = room.status == RoomStatus.open
 
     new_state = await rc.toggle_secure_chat(user_id)
     await update.message.reply_text(
         "🔒 چتِ امن فعال شد." if new_state else "🔓 چتِ امن غیرفعال شد.",
-        reply_markup=in_room_reply_keyboard(secure=new_state, is_owner=is_owner),
+        reply_markup=in_room_reply_keyboard(secure=new_state, is_owner=is_owner, room_open=room_open),
     )
 
 
@@ -195,12 +203,21 @@ async def _relay_new_message(update: Update, context: ContextTypes.DEFAULT_TYPE,
 
 
 async def _handle_delete_command(update: Update, context: ContextTypes.DEFAULT_TYPE, room) -> None:
+    """پیام‌رسانِ حذف: کاربرِ عادی فقط پیامِ خودشو، owner پیامِ هرکسی رو
+    می‌تونه پاک کنه (چون origin رو با شناسه‌ی خودِ owner resolve
+    می‌کنیم، نه با شرطِ سخت‌گیرانه‌ی «باید مالِ خودم باشه»)."""
     user_id = update.effective_user.id
     msg = update.message
     replied_id = msg.reply_to_message.message_id
 
     origin = await rc.get_room_msg_origin(room.id, user_id, replied_id)
-    if origin != (user_id, replied_id):
+    if origin is None:
+        return
+    origin_sender_id, origin_msg_id = origin
+
+    is_own = origin_sender_id == user_id
+    is_owner = user_id == room.owner_id
+    if not is_own and not is_owner:
         await update.effective_message.reply_text("فقط می‌تونی پیام‌های خودت رو حذف کنی.")
         try:
             await msg.delete()
@@ -208,7 +225,7 @@ async def _handle_delete_command(update: Update, context: ContextTypes.DEFAULT_T
             pass
         return
 
-    recipients_map = await rc.get_room_msg_recipients(room.id, user_id, replied_id)
+    recipients_map = await rc.get_room_msg_recipients(room.id, origin_sender_id, origin_msg_id)
     for recipient_id, local_ids in recipients_map.items():
         for mid in local_ids:
             try:
@@ -220,6 +237,67 @@ async def _handle_delete_command(update: Update, context: ContextTypes.DEFAULT_T
         await msg.delete()
     except TelegramError:
         pass
+
+    if is_owner and not is_own:
+        try:
+            await context.bot.send_message(origin_sender_id, "ℹ️ owner یکی از پیام‌هات رو تو اتاق حذف کرد.")
+        except TelegramError:
+            pass
+
+
+async def _handle_kick_command(update: Update, context: ContextTypes.DEFAULT_TYPE, room) -> None:
+    """owner با ریپلای‌کردنِ «اخراج» روی پیامِ یه عضو، اونو از اتاق
+    بیرون می‌کنه. منطقِ عضویت/auto-delete/آزادشدنِ جا دقیقاً مثلِ
+    membership.leave_room_button است، فقط لازم نیست اینجا دوباره
+    importش کنیم چون خودش این ماژول رو ایمپورت می‌کنه (نه برعکس)."""
+    from db import kick_room_member
+
+    owner_id = update.effective_user.id
+    msg = update.message
+    replied_id = msg.reply_to_message.message_id
+
+    origin = await rc.get_room_msg_origin(room.id, owner_id, replied_id)
+    if origin is None:
+        await update.effective_message.reply_text("این پیام قابلِ شناسایی نیست.")
+        return
+
+    target_id, _ = origin
+    if target_id == owner_id:
+        await update.effective_message.reply_text("نمی‌تونی خودتو اخراج کنی؛ برای این کار اتاق رو ببند یا حذفش کن.")
+        return
+
+    result, error = await kick_room_member(owner_id, target_id)
+
+    if error == "not_a_member":
+        await update.effective_message.reply_text("این کاربر دیگه عضوِ این اتاق نیست.")
+        return
+    if error is not None:
+        await update.effective_message.reply_text("مشکلی پیش اومد، دوباره تلاش کن.")
+        return
+
+    await rc.clear_active_room(target_id)
+    display_name = await get_display_name(target_id) or "یه نفر"
+    try:
+        await context.bot.send_message(target_id, "🚫 توسطِ owner از اتاق اخراج شدی.", reply_markup=main_reply_keyboard())
+    except TelegramError:
+        pass
+
+    if result["auto_deleted"]:
+        for uid in result["remaining_member_ids"]:  # این حالت یعنی فقط owner مونده
+            await rc.clear_active_room(uid)
+            try:
+                await context.bot.send_message(
+                    uid, "ℹ️ با اخراجِ آخرین عضو، اتاق خودکار حذف شد.", reply_markup=main_reply_keyboard()
+                )
+            except TelegramError:
+                pass
+    else:
+        await broadcast_system_message(
+            room.id, f"{display_name} اخراج شد.", context, member_ids=result["remaining_member_ids"]
+        )
+        from .matching import try_fill_room_from_queue
+
+        await try_fill_room_from_queue(room.id, context)
 
 
 async def _build_sender_label(room, user_id: int) -> str:
