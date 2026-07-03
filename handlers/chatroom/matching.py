@@ -38,6 +38,8 @@ from db import (
     deduct_coins,
     find_open_room_for_join,
     get_chat_room,
+    get_display_name,
+    get_room_member_ids,
     join_chat_room,
     list_open_room_ids_with_spare_capacity,
     refund_coins,
@@ -263,6 +265,17 @@ async def _notify_room_join_success(user_id: int, room, context: ContextTypes.DE
     await rc.set_active_room(user_id, room.id)
     metrics.room_joins.inc()
     gender_label = GENDER_LABELS_FA.get(room.gender_pref.value, room.gender_pref.value)
+
+    # بقیه‌ی اعضای *فعلیِ* اتاق (بعدِ عضویتِ تازه) باید بدونن یه نفرِ
+    # جدید اومد؛ بدونِ این، اعضای قدیمی هیچ خبری از ورودِ نفرِ جدید
+    # نمی‌شدن. member_ids رو *بعدِ* commitِ join_chat_room می‌خونیم،
+    # پس شاملِ خودِ user_id هم هست — باید از لیستِ گیرنده‌ها کنار بره.
+    display_name = await get_display_name(user_id) or "یه نفر"
+    other_ids = [uid for uid in await get_room_member_ids(room.id) if uid != user_id]
+    from .relay import broadcast_system_message
+
+    await broadcast_system_message(room.id, f"{display_name} به اتاق ملحق شد.", context, member_ids=other_ids)
+
     try:
         await context.bot.send_message(
             user_id,

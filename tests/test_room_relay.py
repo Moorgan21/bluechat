@@ -99,6 +99,7 @@ async def _make_room(make_user, capacity=5, member_count=1):
 async def test_relay_text_message_fanout_with_sender_label(make_user):
     room, (owner, member) = await _make_room(make_user, member_count=1)
     await _set_display_name(member.id, "سارا")
+    referral_code = (await db.get_display_name_and_referral_code(member.id))[1]
 
     bot = _make_bot()
     context = MagicMock(); context.bot = bot
@@ -109,7 +110,7 @@ async def test_relay_text_message_fanout_with_sender_label(make_user):
     bot.send_message.assert_awaited_once()
     call = bot.send_message.await_args
     assert call.args[0] == owner.id
-    assert call.args[1] == "سارا: سلام بچه‌ها"
+    assert call.args[1] == f"سارا (/user_{referral_code}): سلام بچه‌ها"
 
     await _cleanup_room(room.id)
 
@@ -117,6 +118,7 @@ async def test_relay_text_message_fanout_with_sender_label(make_user):
 async def test_relay_text_message_owner_gets_tag(make_user):
     room, (owner, member) = await _make_room(make_user, member_count=1)
     await _set_display_name(owner.id, "علی")
+    referral_code = (await db.get_display_name_and_referral_code(owner.id))[1]
 
     bot = _make_bot()
     context = MagicMock(); context.bot = bot
@@ -126,7 +128,7 @@ async def test_relay_text_message_owner_gets_tag(make_user):
 
     call = bot.send_message.await_args
     assert call.args[0] == member.id
-    assert call.args[1] == "علی (owner): سلام"
+    assert call.args[1] == f"علی (owner) (/user_{referral_code}): سلام"
 
     await _cleanup_room(room.id)
 

@@ -32,7 +32,13 @@ from telegram.ext import ContextTypes
 
 import metrics
 import redis_client as rc
-from db import RoomStatus, get_chat_room, get_display_name, get_room_member_ids
+from db import (
+    RoomStatus,
+    get_chat_room,
+    get_display_name,
+    get_display_name_and_referral_code,
+    get_room_member_ids,
+)
 from keyboards import in_room_reply_keyboard, main_reply_keyboard
 
 logger = logging.getLogger(__name__)
@@ -320,8 +326,12 @@ async def _handle_kick_command(update: Update, context: ContextTypes.DEFAULT_TYP
 
 
 async def _build_sender_label(room, user_id: int) -> str:
-    display_name = await get_display_name(user_id) or "کاربر"
-    return f"{display_name} (owner)" if user_id == room.owner_id else display_name
+    display_name, referral_code = await get_display_name_and_referral_code(user_id)
+    display_name = display_name or "کاربر"
+    name_part = f"{display_name} (owner)" if user_id == room.owner_id else display_name
+    if referral_code:
+        return f"{name_part} (/user_{referral_code})"
+    return name_part
 
 
 async def _send_one(bot, chat_id: int, msg, label: str, reply_params, secure: bool) -> list[int]:

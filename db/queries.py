@@ -691,6 +691,18 @@ async def get_display_name(user_id: int) -> str | None:
         return result.scalar_one_or_none()
 
 
+async def get_display_name_and_referral_code(user_id: int) -> tuple[str | None, str | None]:
+    """برای برچسبِ فرستنده‌ی پیام‌های اتاق: نام نمایشی به‌همراهِ کدِ
+    پروفایلِ عمومی (/user_<code>)، تا اعضا بتونن مستقیم از روی پیام
+    به پروفایلِ فرستنده برسن."""
+    async with async_session() as session:
+        result = await session.execute(
+            select(User.display_name, User.referral_code).where(User.id == user_id)
+        )
+        row = result.one_or_none()
+        return (row.display_name, row.referral_code) if row else (None, None)
+
+
 async def list_users_with_active_room() -> list[tuple[int, int]]:
     """برای jobِ sync دوره‌ای: کاربرهایی که Postgres می‌گه اتاقِ فعال
     دارن، تا اگه آینه‌ی Redis (KEY_USER_ACTIVE_ROOM) عقب افتاده باشه
