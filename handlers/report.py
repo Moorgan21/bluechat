@@ -13,9 +13,17 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-"""هندلرهای «گزارش کاربر». کاربر می‌تونه همراه گفتگوی فعلی رو گزارش بده،
-گزارش تو Postgres ثبت می‌شه و بلافاصله judge.py (با DeepSeek) بر اساس
-تاریخچه‌ی متنیِ گفتگو قضاوتش می‌کنه.
+"""هندلرهای «گزارش کاربر»، در دو مسیرِ کاملاً جدا:
+
+۱. گزارشِ تک‌پیام (handle_message_report_reply/message_report_reason_callback):
+   کاربر توی یه گفتگوی فعال روی پیامِ طرفِ مقابل ریپلای می‌کنه و می‌نویسه
+   «گزارش»/«report»؛ فقط همون یک پیام گزارش می‌شه.
+۲. گزارشِ کلِ گفتگو (start_report_after_chat/report_reason_callback):
+   فقط بعد از پایانِ چت، کنارِ دکمه‌ی پاک‌کردنِ تاریخچه، و فقط تا ۲ دقیقه
+   معتبره (redis_client.is_post_chat_window_active).
+
+هر دو مسیر در نهایت یه Report تو Postgres ثبت می‌کنن و judge.py (با
+DeepSeek) بر اساسِ تاریخچه‌ی متنیِ گفتگو قضاوتش می‌کنه.
 
 اگه گزارش‌شده واقعاً مقصر باشه یه اخطار می‌گیره (با دلیل و شماره‌ی
 اخطار، مثلاً «۱ از ۵»؛ اخطار پنجم خودکار بن می‌شه). اگه گزارش نادرست
@@ -32,44 +40,104 @@ from telegram.ext import ContextTypes
 
 import redis_client as rc
 from db import Report, ReportReason, async_session
-from keyboards import report_reason_keyboard
+from keyboards import message_report_reason_keyboard, report_reason_keyboard
 from verdict_notify import notify_chat_verdict, notify_profile_verdict
 
 logger = logging.getLogger(__name__)
 
 
-async def start_report(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """گزارشِ همراهِ گفتگوی فعلی."""
-    telegram_user = update.effective_user
-    reporter_id = telegram_user.id
+async def handle_message_report_reply(
+    update: Update, context: ContextTypes.DEFAULT_TYPE, partner_id: int, replied_message
+) -> None:
+    """وقتی کاربر با ریپلای‌کردنِ «گزارش»/«report» روی پیامِ طرفِ مقابل
+    (نه پیامِ خودش)، می‌خواد فقط همون یک پیام رو گزارش بده. گزارشِ کلِ
+    گفتگو دیگه از اینجا ممکن نیست؛ فقط از دکمه‌ی «🚫 گزارش این گفتگو»
+    بعدِ پایانِ چت (start_report_after_chat)."""
+    reporter_id = update.effective_user.id
 
-    partner_id = await rc.get_partner(reporter_id)
-    if partner_id is None:
-        await update.message.reply_text(
-            "الان توی گفتگویی نیستی که بخوای گزارشش بدی. گزارش فقط برای همراه فعلی گفتگو امکان‌پذیره."
-        )
+    if await rc.is_own_message(reporter_id, replied_message.message_id):
+        await update.message.reply_text("فقط می‌تونی پیامِ طرفِ مقابل رو گزارش بدی، نه پیامِ خودتو.")
         return
 
-    session_id = await rc.get_session_id(reporter_id)
-    keyboard = report_reason_keyboard(reported_id=partner_id, session_id=session_id)
-    if update.callback_query:
-        await update.callback_query.answer()
-        await update.callback_query.message.reply_text("دلیل گزارش رو انتخاب کن:", reply_markup=keyboard)
+    if replied_message.text:
+        excerpt = replied_message.text
+    elif replied_message.caption:
+        excerpt = replied_message.caption
     else:
-        await update.message.reply_text("دلیل گزارش رو انتخاب کن:", reply_markup=keyboard)
+        excerpt = "(پیامِ غیرمتنی: عکس/ویس/ویدیو و امثالش)"
+
+    session_id = await rc.get_session_id(reporter_id)
+    token = await rc.store_message_report_context(reporter_id, partner_id, session_id, excerpt)
+    keyboard = message_report_reason_keyboard(token)
+    await update.message.reply_text("دلیلِ گزارشِ این پیام رو انتخاب کن:", reply_markup=keyboard)
+
+
+async def message_report_reason_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    await query.answer()
+
+    if query.data == "msgreport:cancel":
+        await query.edit_message_text("گزارش لغو شد.")
+        return
+
+    # format: msgreport:reason:<code>:<token>
+    _, _, reason_code, token = query.data.split(":")
+    report_context = await rc.pop_message_report_context(token)
+    if report_context is None:
+        await query.edit_message_text("⚠️ این درخواستِ گزارش دیگه معتبر نیست (منقضی شده).")
+        return
+
+    reporter_id = query.from_user.id
+    reported_id = report_context["reported_id"]
+    session_id = report_context["session_id"]
+    message_excerpt = report_context["message_excerpt"]
+
+    async with async_session() as session:
+        report = Report(
+            session_id=session_id,
+            reporter_id=reporter_id,
+            reported_id=reported_id,
+            reason=ReportReason(reason_code),
+        )
+        session.add(report)
+        await session.commit()
+        await session.refresh(report)
+        report_id = report.id
+
+    await query.edit_message_text(
+        "✅ گزارشِ این پیام ثبت شد و در حال بررسی توسطِ سیستمِ قضاوتِ ماست... ⏳"
+    )
+
+    await rc.push_ai_job({
+        "type": "chat_report",
+        "report_id": report_id,
+        "session_id": session_id,
+        "reporter_id": reporter_id,
+        "reported_id": reported_id,
+        "reason": reason_code,
+        "details": f"کاربر مشخصاً همین پیام رو گزارش کرده: {message_excerpt}",
+    })
 
 
 async def start_report_after_chat(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """هندلر دکمه‌ی «🚫 گزارش این گفتگو» که بعد از پایانِ چت (کنارِ دکمه‌ی
     پاک‌کردنِ تاریخچه) نشون داده می‌شه. چون در این حالت دیگه rc.get_partner
     خالیه (چت تموم شده)، reported_id و session_id مستقیم از callback_data
-    خونده می‌شن."""
+    خونده می‌شن. این دکمه دقیقاً همون مهلتِ ۲دقیقه‌ایِ دکمه‌ی پاکسازیِ
+    تاریخچه رو داره (redis_client.is_post_chat_window_active) — بعد از
+    اون، تاریخچه‌ی متنیِ گفتگو خودکار پاک شده و دیگه چیزی برای قضاوتِ
+    AI باقی نمونده."""
     query = update.callback_query
     await query.answer()
 
     _, reported_id_str, session_id_str = query.data.split(":")
     reported_id = int(reported_id_str)
     session_id = int(session_id_str) if session_id_str != "none" else None
+    reporter_id = query.from_user.id
+
+    if session_id is not None and not await rc.is_post_chat_window_active(session_id, reporter_id, reported_id):
+        await query.message.reply_text("⚠️ این درخواست دیگه معتبر نیست (مهلتِ ۲دقیقه‌ای گذشته).")
+        return
 
     keyboard = report_reason_keyboard(reported_id=reported_id, session_id=session_id)
     await query.message.reply_text("دلیل گزارش رو انتخاب کن:", reply_markup=keyboard)

@@ -63,14 +63,14 @@ async def send_direct_msg(
     """پیام دایرکت؛ شناسه‌ی عمومیِ فرستنده (/user_<code>) به مقصد نشون
     داده می‌شه. هر پیام rc.DIRECT_MSG_COIN_COST سکه هزینه داره و همون
     لحظه کسر می‌شه، چه مقصد ببینتش چه نه (برخلافِ پیامِ ناشناس که
-    رایگانه). اگه فرستنده بلاک شده باشه، بی‌سروصدا رد می‌شه بدونِ کسرِ
-    سکه چون پیام اصلاً تحویل داده
-    نمی‌شه)."""
+    رایگانه). اگه فرستنده بلاک شده باشه، صراحتاً بهش گفته می‌شه (برخلافِ
+    send_anon_note که چون کاملاً ناشناسه، برای عدمِ افشای بلاک،
+    بی‌سروصدا رد می‌شه)."""
     from telegram import InlineKeyboardButton, InlineKeyboardMarkup
     from db import User, async_session, deduct_coins
 
     if await is_sender_blocked(owner_id, sender_id):
-        await update.message.reply_text("✅ پیامت ارسال شد.")
+        await update.message.reply_text("🚫 این کاربر بلاکت کرده و امکانِ ارسالِ پیامِ دایرکت بهش نداری.")
         return
 
     if await deduct_coins(sender_id, rc.DIRECT_MSG_COIN_COST, "direct_msg_cost") is None:
@@ -168,6 +168,10 @@ async def handle_direct_msg_button(update: Update, context: ContextTypes.DEFAULT
         )
         return
 
+    if await is_sender_blocked(target_id, sender_id):
+        await query.message.reply_text("🚫 این کاربر بلاکت کرده و امکانِ ارسالِ پیامِ دایرکت بهش نداری.")
+        return
+
     context.user_data["awaiting_direct_msg_target"] = target_id
     from keyboards import cancel_keyboard
     await query.message.reply_text(
@@ -242,6 +246,13 @@ async def handle_pending_reply_input(update: Update, context: ContextTypes.DEFAU
     sender_id = await rc.get_note_sender(note_id)
     if sender_id is None:
         await update.message.reply_text("⚠️ این پیام دیگه معتبر نیست (فرستنده در دسترس نیست).")
+        return True
+
+    # این همون گیت‌ِ بلاکیه که send_anon_note/send_direct_msg برای پیامِ
+    # اول اعمال می‌کنن؛ بدونِ این چک، طرفی که بلاک شده می‌تونست از طریقِ
+    # زنجیره‌ی پاسخ‌ها (noterep) دوباره برای صاحبِ لینک پیام بفرسته.
+    if await is_sender_blocked(sender_id, owner_id):
+        await update.message.reply_text("✅ پاسخت ارسال شد.")
         return True
 
     msg = update.message

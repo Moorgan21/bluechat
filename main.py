@@ -40,6 +40,7 @@ from telegram import Update
 from telegram.error import TelegramError
 from telegram.ext import (
     Application,
+    ApplicationHandlerStop,
     CallbackQueryHandler,
     CommandHandler,
     ContextTypes,
@@ -51,7 +52,7 @@ from telegram.ext import (
 import redis_client as rc
 import metrics
 import spam_guard
-from db import init_db, get_or_create_user, async_session, refund_coins
+from db import init_db, get_or_create_user, async_session, is_user_banned, refund_coins
 from handlers import anon_note, chat, chatroom, coins, menu, nearby, profile, public_profile, report, search, settings
 
 logging.basicConfig(
@@ -186,6 +187,7 @@ IN_CHAT_KEYBOARD_ROUTES = {
 }
 
 IN_ROOM_KEYBOARD_ROUTES = {
+    "👥 وضعیت اتاق": chatroom.show_room_status_button,
     "🔒 چت امن (غیرفعال)": chatroom.toggle_secure_chat_button,
     "🔒 چت امن (فعال)": chatroom.toggle_secure_chat_button,
     "🚪 ترک اتاق": chatroom.leave_room_button,
@@ -195,6 +197,35 @@ IN_ROOM_KEYBOARD_ROUTES = {
     "🔓 بازکردن اتاق": chatroom.reopen_room_button,
     "🏠 اتاق چت": chatroom.show_room_menu,
 }
+
+
+async def reject_banned_users(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """گیتِ سراسری: توی گروهِ -1 رجیستر می‌شه، یعنی قبل از هر هندلرِ
+    دیگه‌ای (چه CommandHandler چه MessageHandler چه CallbackQueryHandler
+    توی گروهِ پیش‌فرضِ ۰) اجرا می‌شه. اگه کاربر بن باشه، ApplicationHandlerStop
+    می‌زنه تا هیچ‌کدومِ اون‌ها اجرا نشن؛ برخلافِ فیلترِ ساده، این تنها
+    راهیه که هم کامندها هم پیام‌ها هم callback query‌ها رو یکجا پوشش
+    می‌ده بدونِ تکرارِ چک تو تک‌تکِ هندلرها."""
+    user = update.effective_user
+    if user is None:
+        return
+    if not await is_user_banned(user.id):
+        return
+
+    if update.callback_query is not None:
+        try:
+            await update.callback_query.answer("🚫 حساب شما مسدود شده است.", show_alert=True)
+        except TelegramError:
+            pass
+    elif update.effective_message is not None and await rc.should_send_ban_notice(user.id):
+        try:
+            await update.effective_message.reply_text(
+                "🚫 حسابِ شما به‌دلیلِ نقضِ قوانین مسدود شده و امکانِ استفاده از ربات رو ندارید."
+            )
+        except TelegramError:
+            pass
+
+    raise ApplicationHandlerStop
 
 
 async def text_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -403,14 +434,16 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         await coins.show_coin_history(update, context)
     elif data.startswith("report:reason:") or data == "report:cancel":
         await report.report_reason_callback(update, context)
-    elif data == "report:start":
-        await report.start_report(update, context)
+    elif data.startswith("msgreport:reason:") or data == "msgreport:cancel":
+        await report.message_report_reason_callback(update, context)
     elif data.startswith("reportsession:"):
         await report.start_report_after_chat(update, context)
     elif data.startswith("profilereport:"):
         await report.handle_profile_report(update, context)
     elif data.startswith("pubblock:"):
         await public_profile.handle_public_block_button(update, context)
+    elif data.startswith("pubunblock:"):
+        await public_profile.handle_public_unblock_button(update, context)
     elif data.startswith("chatreq:"):
         await public_profile.handle_chat_request_button(update, context)
     elif data.startswith("chatreqview:"):
@@ -485,7 +518,6 @@ async def post_init(application: Application) -> None:
         BotCommand("next",     "چت بعدی — همراه جدید پیدا کن"),
         BotCommand("settings", "تنظیمات شخصی"),
         BotCommand("help",     "راهنما"),
-        BotCommand("report",   "گزارش تخلف"),
         BotCommand("silent",   "حالت سکوت پروفایل عمومی"),
         BotCommand("room",     "وضعیتِ اتاقِ چتِ فعلی یا ساختن/عضویت"),
     ])
@@ -569,11 +601,17 @@ def main() -> None:
 
     app = Application.builder().token(BOT_TOKEN).post_init(post_init).build()
 
+    # گروهِ -1: قبل از هر چیزِ دیگه‌ای اجرا می‌شه (کامندها/پیام‌ها/
+    # callback query‌ها، همه با یه MessageHandler(filters.ALL) و یه
+    # CallbackQueryHandler پوشش داده می‌شن، نه با شرکت‌دادنِ تک‌تکِ
+    # هندلرهای گروهِ ۰).
+    app.add_handler(MessageHandler(filters.ALL, reject_banned_users), group=-1)
+    app.add_handler(CallbackQueryHandler(reject_banned_users), group=-1)
+
     app.add_handler(CommandHandler("start", start_command))
     app.add_handler(CommandHandler("stop", chat.stop_chat))
     app.add_handler(CommandHandler("next", chat.next_chat))
     app.add_handler(CommandHandler("help", menu.show_help))
-    app.add_handler(CommandHandler("report", report.start_report))
     app.add_handler(CommandHandler("cancel", profile.cancel_profile_edit))
 
     app.add_handler(CommandHandler("silent", public_profile.toggle_silent_mode))
@@ -581,12 +619,19 @@ def main() -> None:
     app.add_handler(CommandHandler("room", chatroom.show_room_menu))
     app.add_handler(MessageHandler(filters.Regex(r"^/u(?:ser)?_\S+"), user_profile_command))
 
-    app.add_handler(MessageHandler(filters.LOCATION, nearby.handle_location_message))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_router))
+    # همه‌ی هندلرهای زیر با filters.UpdateType.MESSAGE محدود شدن چون
+    # MessageFilter.check_update روی update.effective_message کار می‌کنه
+    # که برای edited_message هم truthy‌ه؛ بدونِ این محدودیت، این‌ها (که
+    # زودتر از edited_message_router رجیستر شدن و هر دو تو گروهِ
+    # پیش‌فرضِ ۰ هستن) خودِ ادیت رو به‌عنوانِ پیامِ جدید می‌قاپن و
+    # edited_message_router هیچ‌وقت اجرا نمی‌شه.
+    app.add_handler(MessageHandler(filters.UpdateType.MESSAGE & filters.LOCATION, nearby.handle_location_message))
+    app.add_handler(MessageHandler(filters.UpdateType.MESSAGE & filters.TEXT & ~filters.COMMAND, text_router))
     app.add_handler(
         MessageHandler(
-            (filters.PHOTO | filters.VOICE | filters.AUDIO | filters.VIDEO | filters.Sticker.ALL
-             | filters.VIDEO_NOTE | filters.Document.ALL | filters.ANIMATION)
+            filters.UpdateType.MESSAGE
+            & (filters.PHOTO | filters.VOICE | filters.AUDIO | filters.VIDEO | filters.Sticker.ALL
+               | filters.VIDEO_NOTE | filters.Document.ALL | filters.ANIMATION)
             & ~filters.COMMAND,
             media_router,
         )

@@ -22,9 +22,17 @@ from telegram.ext import ContextTypes
 
 import metrics
 import redis_client as rc
-from db import RoomGenderPref, RoomStatus, create_chat_room, get_chat_room, get_room_member_ids
+from db import (
+    RoomGenderPref,
+    RoomStatus,
+    create_chat_room,
+    get_chat_room,
+    get_room_member_ids,
+    get_room_members_detail,
+)
 from keyboards import (
     in_room_reply_keyboard,
+    main_reply_keyboard,
     room_capacity_keyboard,
     room_gender_keyboard,
     room_menu_keyboard,
@@ -96,6 +104,42 @@ async def _show_active_room_status(
         await update.callback_query.message.reply_text(text, reply_markup=keyboard)
     else:
         await update.message.reply_text(text, reply_markup=keyboard)
+
+
+async def show_room_status_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """دکمه‌ی «👥 وضعیت اتاق»: برخلافِ _show_active_room_status (که فقط
+    یه خلاصه‌ی کلی می‌ده)، اینجا تک‌تکِ اعضا با نقش، لینکِ پروفایلِ
+    عمومی، و وضعیتِ حضورِ فعلی‌شون لیست می‌شن. «ترکِ موقت» یعنی همون
+    چیزی که با دکمه‌ی «🚪 خروج» فعال می‌شه (redis_client.suppress_room_ui)
+    — عضویت دست‌نخورده‌ست، فقط هندلرِ اتاقِ اون عضو موقتاً غیرفعاله."""
+    user_id = update.effective_user.id
+    room_id = await rc.get_active_room(user_id)
+    if room_id is None:
+        await update.message.reply_text("توی اتاقی نیستی.")
+        return
+
+    room = await get_chat_room(room_id)
+    if room is None or room.status == RoomStatus.deleted:
+        await rc.clear_active_room(user_id)
+        await update.message.reply_text("این اتاق دیگه فعال نیست.", reply_markup=main_reply_keyboard())
+        return
+
+    members = await get_room_members_detail(room_id)
+    lines = [
+        f"👥 وضعیتِ اتاقِ #{room.id}",
+        "",
+        f"تعدادِ اعضا: {len(members)} از {room.capacity} نفر",
+        "",
+    ]
+    for i, m in enumerate(members, start=1):
+        name = m["display_name"] or "کاربر"
+        name_part = f"{name} (owner)" if m["user_id"] == room.owner_id else name
+        profile_part = f" (/user_{m['referral_code']})" if m["referral_code"] else ""
+        is_away = await rc.is_room_ui_suppressed(m["user_id"])
+        presence = "🌙 ترکِ موقتِ اتاق" if is_away else "🟢 حاضر"
+        lines.append(f"{i}. {name_part}{profile_part} — {presence}")
+
+    await update.message.reply_text("\n".join(lines))
 
 
 async def room_menu_callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

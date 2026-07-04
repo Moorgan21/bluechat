@@ -25,7 +25,7 @@ from telegram.error import TelegramError
 from telegram.ext import ContextTypes
 
 import redis_client as rc
-from db import User, async_session, clear_photo_file_id, mark_session_history_deleted
+from db import User, async_session, clear_photo_file_id, is_sender_blocked, mark_session_history_deleted
 from keyboards import end_chat_actions_keyboard, in_chat_reply_keyboard, main_reply_keyboard, public_profile_keyboard
 
 logger = logging.getLogger(__name__)
@@ -69,7 +69,8 @@ async def show_partner_profile(update: Update, context: ContextTypes.DEFAULT_TYP
         f"🔗 پروفایل عمومی: /user_{partner.referral_code}"
     )
 
-    keyboard = public_profile_keyboard(partner_id, partner.reactions_enabled)
+    is_blocked = await is_sender_blocked(user_id, partner_id)
+    keyboard = public_profile_keyboard(partner_id, partner.reactions_enabled, is_blocked=is_blocked)
 
     if partner.photo_file_id:
         try:
@@ -125,11 +126,15 @@ async def toggle_secure_chat_button(update: Update, context: ContextTypes.DEFAUL
 async def offer_history_deletion(
     user_a: int, user_b: int, context: ContextTypes.DEFAULT_TYPE, session_id: int | None
 ) -> None:
-    await rc.start_pending_delete(user_a, user_b)
+    await rc.start_pending_delete(user_a, user_b, session_id)
 
     text = (
         "اگه می‌خوای تاریخچه‌ی این گفتگو کامل و برای هر دو طرف پاک بشه، دکمه‌ی زیر رو بزن.\n"
         "(تا وقتی طرف مقابل هم تایید نکنه، چیزی حذف نمی‌شه.)\n\n"
+        "⏳ توجه: این دکمه و دکمه‌ی «🚫 گزارش این گفتگو» فقط تا ۲ دقیقه معتبرن. "
+        "بعد از ۲ دقیقه، تاریخچه‌ی متنیِ این گفتگو خودکار از روی سرور پاک می‌شه "
+        "(بدونِ اینکه پیام‌های خودِ تلگرامتون حذف بشه) و دیگه نه پاکسازیِ دستی "
+        "ممکنه نه گزارش‌دادن.\n\n"
         "⚠️ توجه: بعد از پاک‌شدنِ تاریخچه، دیگه امکان گزارش‌دادن یا بررسیِ این "
         "گفتگو وجود نداره (چون متنش کامل حذف می‌شه)."
     )
@@ -142,6 +147,29 @@ async def offer_history_deletion(
             await context.bot.send_message(uid, text, reply_markup=keyboard)
         except TelegramError:
             logger.warning("امکان ارسال پیشنهاد حذف تاریخچه به user_id=%s وجود نداشت.", uid)
+
+    context.job_queue.run_once(
+        _auto_purge_session_history_job,
+        when=rc.TTL_PENDING_DELETE,
+        data={"user_a": user_a, "user_b": user_b, "session_id": session_id},
+        name=f"post_chat_purge_{session_id if session_id is not None else rc.pair_key(user_a, user_b)}",
+    )
+
+
+async def _auto_purge_session_history_job(context: ContextTypes.DEFAULT_TYPE) -> None:
+    """بعد از ۲ دقیقه از پایانِ چت (حتی اگه هیچ‌کدوم دکمه‌ای نزده باشن)،
+    تاریخچه‌ی متنیِ این گفتگو از سرور (Redis + Postgres) پاک می‌شه، ولی
+    برخلافِ پاکسازیِ دستی، پیام‌های خودِ تلگرام کاربرها دست‌نخورده
+    می‌مونن — این فقط یه سیاستِ نگه‌داری/حریمِ‌خصوصیِ خودکاره، نه یه
+    اقدامِ عمدیِ کاربر که بخواد از چتش چیزی محو بشه."""
+    data = context.job.data
+    user_a, user_b, session_id = data["user_a"], data["user_b"], data["session_id"]
+
+    await rc.clear_pending_delete(user_a, user_b, session_id)
+    await rc.pop_history(user_a, session_id)
+    await rc.pop_history(user_b, session_id)
+    if session_id is not None:
+        await mark_session_history_deleted(session_id)
 
 
 async def handle_delete_history_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -160,10 +188,10 @@ async def handle_delete_history_callback(update: Update, context: ContextTypes.D
     if clicker_id not in (user_a, user_b):
         return
 
-    already_confirmed_before = clicker_id in (await rc.get_pending_delete_set(user_a, user_b) or set())
-    confirmed = await rc.confirm_pending_delete(user_a, user_b, clicker_id)
+    already_confirmed_before = clicker_id in (await rc.get_pending_delete_set(user_a, user_b, session_id) or set())
+    confirmed = await rc.confirm_pending_delete(user_a, user_b, clicker_id, session_id)
     if confirmed is None:
-        await query.edit_message_text("این درخواست دیگه معتبر نیست (منقضی شده یا گفتگوی جدیدی شروع شده).")
+        await query.edit_message_text("⚠️ این درخواست دیگه معتبر نیست (مهلتِ ۲دقیقه‌ای گذشته).")
         return
 
     other_id = user_b if clicker_id == user_a else user_a
@@ -183,11 +211,15 @@ async def handle_delete_history_callback(update: Update, context: ContextTypes.D
                 pass
         return
 
-    await rc.clear_pending_delete(user_a, user_b)
+    await rc.clear_pending_delete(user_a, user_b, session_id)
+    for job in context.job_queue.get_jobs_by_name(
+        f"post_chat_purge_{session_id if session_id is not None else rc.pair_key(user_a, user_b)}"
+    ):
+        job.schedule_removal()
     await query.edit_message_text("در حال پاک‌کردن تاریخچه برای هر دو طرف... 🗑")
 
     for uid in (user_a, user_b):
-        message_ids = await rc.pop_history(uid)
+        message_ids = await rc.pop_history(uid, session_id)
         for mid in message_ids:
             try:
                 await context.bot.delete_message(chat_id=uid, message_id=mid)

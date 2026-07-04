@@ -76,6 +76,15 @@ async def relay_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
                 pass
         return
 
+    # فرمانِ گزارشِ تک‌پیام: ریپلای‌کردنِ «گزارش»/«report» روی پیامِ طرفِ
+    # مقابل. گزارشِ کلِ گفتگو دیگه از وسطِ چت ممکن نیست، فقط از دکمه‌ی
+    # «🚫 گزارش این گفتگو»یِ بعدِ پایانِ چت.
+    if msg.text and msg.text.strip().lower() in ("گزارش", "report") and msg.reply_to_message:
+        from handlers.report import handle_message_report_reply
+
+        await handle_message_report_reply(update, context, partner_id, msg.reply_to_message)
+        return
+
     await context.bot.send_chat_action(partner_id, ChatAction.TYPING)
 
     # اگه کاربر به پیامی ریپلای کرده، ID معادل اون پیام در چت پارتنر رو پیدا می‌کنیم
@@ -114,15 +123,15 @@ async def relay_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
         if sent_msg is not None:
             metrics.messages_relayed.inc()
+            session_id = await rc.get_session_id(user_id)
             await rc.link_messages(user_id, msg.message_id, partner_id, sent_msg.message_id)
-            await rc.record_message(user_id, msg.message_id)
-            await rc.record_message(partner_id, sent_msg.message_id)
+            await rc.record_message(user_id, msg.message_id, session_id)
+            await rc.record_message(partner_id, sent_msg.message_id, session_id)
             await rc.mark_own_message(user_id, msg.message_id)
             await rc.increment_chat_msg_count(user_id, partner_id)
 
             # ذخیره‌ی متنِ پیام در Postgres (فقط برای امکانِ قضاوتِ AI در
             # صورت گزارش‌شدن). محتوای مدیا ذخیره نمی‌شه، فقط نوعش.
-            session_id = await rc.get_session_id(user_id)
             if session_id is not None:
                 content_type = "text" if msg.text else (
                     "photo" if msg.photo else
@@ -162,15 +171,17 @@ async def relay_edit(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 
     from datetime import datetime, timezone, timedelta
     edit_time = datetime.now(tz=timezone(timedelta(hours=3, minutes=30)))
-    time_str = edit_time.strftime("%H:%M")
+    time_str = edit_time.strftime("%Y-%m-%d %H:%M")
 
-    secure = await rc.is_secure_chat(user_id)
     try:
+        # editMessageText اصلاً پارامترِ protect_content نداره (فقط موقعِ
+        # ارسالِ اولیه قابلِ‌تنظیمه)؛ قبلاً اینجا پاس داده می‌شد که چون
+        # TypeError هست نه TelegramError، توسطِ except زیر گرفته نمی‌شد و
+        # کلِ ادیت رو با خطا می‌ترکوند.
         await context.bot.edit_message_text(
             chat_id=partner_id,
             message_id=partner_msg_id,
             text=f"{msg.text}\n\n✏️ ویرایش شده · {time_str}",
-            protect_content=secure,
         )
     except TelegramError:
         pass

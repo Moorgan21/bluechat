@@ -26,6 +26,7 @@ from telegram import Bot
 
 import redis_client as rc
 import metrics
+from ban_enforcement import enforce_ban
 from judge import judge_report
 from profile_judge import judge_profile_report
 from verdict_notify import notify_chat_verdict, notify_profile_verdict
@@ -58,6 +59,15 @@ async def _process_job(bot: Bot, job: dict) -> None:
         metrics.ai_jobs_done.labels(type="chat_report").inc()
         await notify_chat_verdict(bot, job["reporter_id"], job["reported_id"], result)
 
+        # اگه این قضاوت باعثِ بن‌شدنِ کسی شده (گزارش‌شده، گزارش‌دهنده، یا
+        # هردو)، همون لحظه از چتِ ۱به۱/اتاقِ چتِ فعلی‌ش هم خارج بشه.
+        if result.get("reported_auto_banned"):
+            await enforce_ban(bot, result["reported_id"])
+        if result.get("reporter_auto_banned"):
+            await enforce_ban(bot, result["reporter_id"])
+        if result.get("reporter_also_guilty_auto_banned"):
+            await enforce_ban(bot, result["reporter_id"])
+
     elif job_type == "profile_report":
         image_b64 = job.get("image_b64")
         image_bytes = base64.b64decode(image_b64) if image_b64 else None
@@ -74,6 +84,13 @@ async def _process_job(bot: Bot, job: dict) -> None:
             result = {"verdict": "pending"}
         metrics.ai_jobs_done.labels(type="profile_report").inc()
         await notify_profile_verdict(bot, job["reporter_id"], job["reported_id"], result)
+
+        # گزارشِ پروفایل با guilty بلافاصله بن می‌کنه (نه بعدِ ۵ اخطار)،
+        # dismissed هم می‌تونه با ۵مین اخطارِ گزارش‌دهنده بن‌اش کنه.
+        if result.get("verdict") == "guilty":
+            await enforce_ban(bot, result["reported_id"])
+        elif result.get("auto_banned"):
+            await enforce_ban(bot, result["reporter_id"])
 
     else:
         logger.warning("نوع job ناشناخته: %s", job_type)

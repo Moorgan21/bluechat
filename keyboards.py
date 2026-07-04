@@ -72,7 +72,7 @@ def in_room_reply_keyboard(secure: bool = False, is_owner: bool = False, room_op
     می‌شه. برای owner هم هست، چون owner راهِ دیگه‌ای برای موقتاً
     کنار کشیدن از مدیریتِ اتاق نداره."""
     secure_label = "🔒 چت امن (فعال)" if secure else "🔒 چت امن (غیرفعال)"
-    rows = [[KeyboardButton(secure_label), KeyboardButton("🚪 خروج")]]
+    rows = [[KeyboardButton("👥 وضعیت اتاق")], [KeyboardButton(secure_label), KeyboardButton("🚪 خروج")]]
     if is_owner:
         close_label = "🔒 بستن اتاق" if room_open else "🔓 بازکردن اتاق"
         rows.append([KeyboardButton(close_label)])
@@ -103,32 +103,24 @@ def purge_history_keyboard(room_id: int) -> InlineKeyboardMarkup:
     )
 
 
-def profile_inline_keyboard(is_own_profile: bool = True, reported_id: int | None = None) -> InlineKeyboardMarkup:
-    if is_own_profile:
-        rows = [
-            [InlineKeyboardButton("🖼 عکس پروفایل", callback_data="profile:edit_photo")],
-            [
-                InlineKeyboardButton("✏️ نام نمایشی", callback_data="profile:edit_name"),
-                InlineKeyboardButton("📝 بیوگرافی", callback_data="profile:edit_bio"),
-            ],
-            [
-                InlineKeyboardButton("⚧ جنسیت", callback_data="profile:edit_gender"),
-                InlineKeyboardButton("🎂 سن", callback_data="profile:edit_age"),
-            ],
-            [
-                InlineKeyboardButton("🗺 استان", callback_data="profile:edit_province"),
-                InlineKeyboardButton("🏙 شهر", callback_data="profile:edit_city"),
-            ],
-            [InlineKeyboardButton("😠 تنظیماتِ واکنش", callback_data="reactsettings:open")],
-            [InlineKeyboardButton("🔙 بازگشت به منو", callback_data="menu:main")],
-        ]
-    else:
-        rows = [
-            [
-                InlineKeyboardButton("🚫 گزارش رفتار", callback_data="report:start"),
-                InlineKeyboardButton("🚩 گزارش پروفایل", callback_data=f"profilereport:{reported_id}"),
-            ],
-        ]
+def profile_inline_keyboard() -> InlineKeyboardMarkup:
+    rows = [
+        [InlineKeyboardButton("🖼 عکس پروفایل", callback_data="profile:edit_photo")],
+        [
+            InlineKeyboardButton("✏️ نام نمایشی", callback_data="profile:edit_name"),
+            InlineKeyboardButton("📝 بیوگرافی", callback_data="profile:edit_bio"),
+        ],
+        [
+            InlineKeyboardButton("⚧ جنسیت", callback_data="profile:edit_gender"),
+            InlineKeyboardButton("🎂 سن", callback_data="profile:edit_age"),
+        ],
+        [
+            InlineKeyboardButton("🗺 استان", callback_data="profile:edit_province"),
+            InlineKeyboardButton("🏙 شهر", callback_data="profile:edit_city"),
+        ],
+        [InlineKeyboardButton("😠 تنظیماتِ واکنش", callback_data="reactsettings:open")],
+        [InlineKeyboardButton("🔙 بازگشت به منو", callback_data="menu:main")],
+    ]
     return InlineKeyboardMarkup(rows)
 
 
@@ -245,21 +237,38 @@ def gender_selection_keyboard() -> InlineKeyboardMarkup:
     )
 
 
+REPORT_REASONS = [
+    ("اسپم / تبلیغات", "spam"),
+    ("کلاهبرداری", "scam"),
+    ("توهین / آزار", "abuse"),
+    ("محتوای جنسی", "sexual"),
+    ("پروفایل جعلی", "fake_profile"),
+    ("سایر موارد", "other"),
+]
+
+
 def report_reason_keyboard(reported_id: int, session_id: int | None = None) -> InlineKeyboardMarkup:
+    """دلیلِ گزارشِ کلِ گفتگو، فقط بعد از پایانِ چت (کنارِ دکمه‌ی
+    پاک‌کردنِ تاریخچه) قابل‌دسترسه."""
     session_part = session_id if session_id is not None else "none"
-    reasons = [
-        ("اسپم / تبلیغات", "spam"),
-        ("کلاهبرداری", "scam"),
-        ("توهین / آزار", "abuse"),
-        ("محتوای جنسی", "sexual"),
-        ("پروفایل جعلی", "fake_profile"),
-        ("سایر موارد", "other"),
-    ]
     rows = [
         [InlineKeyboardButton(label, callback_data=f"report:reason:{code}:{reported_id}:{session_part}")]
-        for label, code in reasons
+        for label, code in REPORT_REASONS
     ]
     rows.append([InlineKeyboardButton("انصراف", callback_data="report:cancel")])
+    return InlineKeyboardMarkup(rows)
+
+
+def message_report_reason_keyboard(token: str) -> InlineKeyboardMarkup:
+    """دلیلِ گزارشِ یک پیامِ مشخص (با ریپلای‌کردنِ «گزارش» روی پیامِ
+    طرفِ مقابل)؛ برخلافِ report_reason_keyboard، بجای reported_id/session_id
+    خامِ توی callback_data، یه tokenِ کوتاه داره که متنِ پیامِ گزارش‌شده
+    رو (که توی callback_data جا نمی‌شه) از Redis resolve می‌کنه."""
+    rows = [
+        [InlineKeyboardButton(label, callback_data=f"msgreport:reason:{code}:{token}")]
+        for label, code in REPORT_REASONS
+    ]
+    rows.append([InlineKeyboardButton("انصراف", callback_data="msgreport:cancel")])
     return InlineKeyboardMarkup(rows)
 
 
@@ -395,13 +404,19 @@ def city_keyboard(province: str, page: int = 0) -> InlineKeyboardMarkup:
 
 
 # پروفایلِ عمومی (/user_<code>) و سیستمِ واکنش
-def public_profile_keyboard(target_id: int, reactions_enabled: bool) -> InlineKeyboardMarkup:
+def public_profile_keyboard(target_id: int, reactions_enabled: bool, is_blocked: bool = False) -> InlineKeyboardMarkup:
     """زیرِ پروفایلی که با /user_<code> باز می‌شه؛ حتی وقتی دو نفر توی
-    چتِ فعال نیستن هم دیده می‌شه."""
+    چتِ فعال نیستن هم دیده می‌شه. is_blocked یعنی بیننده قبلاً همین
+    target_id رو بلاک کرده؛ توی این حالت دکمه به «✅ آنبلاک» عوض می‌شه."""
+    block_button = (
+        InlineKeyboardButton("✅ آنبلاک", callback_data=f"pubunblock:{target_id}")
+        if is_blocked
+        else InlineKeyboardButton("🚫 بلاک", callback_data=f"pubblock:{target_id}")
+    )
     rows = [
         [
             InlineKeyboardButton("🚩 گزارش پروفایل", callback_data=f"profilereport:{target_id}"),
-            InlineKeyboardButton("🚫 بلاک", callback_data=f"pubblock:{target_id}"),
+            block_button,
         ],
         [InlineKeyboardButton("💬 درخواست چت", callback_data=f"chatreq:{target_id}")],
         [InlineKeyboardButton("📩 پیام دایرکت", callback_data=f"directmsg:{target_id}")],

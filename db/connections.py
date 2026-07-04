@@ -86,3 +86,10 @@ async def init_db() -> None:
         await conn.execute(
             text("CREATE INDEX IF NOT EXISTS ix_users_active_room_id ON users (active_room_id)")
         )
+        # همینطور ستونِ details رو به reports که از قبل وجود داره: بدونِ
+        # این، هر ثبتِ گزارشی (چه کلِ گفتگو چه تک‌پیام) با
+        # UndefinedColumnError کرش می‌کرد، چون create_all جدولِ موجود رو
+        # دست نمی‌زنه.
+        await conn.execute(
+            text("ALTER TABLE reports ADD COLUMN IF NOT EXISTS details TEXT")
+        )

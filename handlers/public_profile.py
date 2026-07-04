@@ -56,11 +56,13 @@ from db import (
     get_reaction_tag,
     get_user_by_referral_code,
     increment_total_chats,
+    is_sender_blocked,
     list_reaction_tags,
     log_reaction,
     refund_coins,
     set_reactions_enabled,
     set_silent_mode,
+    unblock_sender,
 )
 from handlers.chat import check_room_conflict
 from keyboards import (
@@ -125,7 +127,8 @@ async def show_public_profile_by_code(update: Update, context: ContextTypes.DEFA
         return
 
     text = await _build_public_profile_text(code, target)
-    keyboard = public_profile_keyboard(target.id, target.reactions_enabled)
+    is_blocked = await is_sender_blocked(viewer_id, target.id)
+    keyboard = public_profile_keyboard(target.id, target.reactions_enabled, is_blocked=is_blocked)
 
     if target.photo_file_id:
         try:
@@ -139,6 +142,20 @@ async def show_public_profile_by_code(update: Update, context: ContextTypes.DEFA
             await update.message.reply_text(text, reply_markup=keyboard, parse_mode="HTML")
     else:
         await update.message.reply_text(text, reply_markup=keyboard, parse_mode="HTML")
+
+
+async def _refresh_block_button(query, owner_id: int, target_id: int) -> None:
+    """بعد از بلاک/آنبلاک، دکمه‌ی زیرِ همون پیام رو فوراً با وضعیتِ
+    جدید بازمی‌سازه (بدونِ نیاز به بازکردنِ دوباره‌ی پروفایل)."""
+    target = await async_session_get_user(target_id)
+    if target is None:
+        return
+    is_blocked = await is_sender_blocked(owner_id, target_id)
+    keyboard = public_profile_keyboard(target_id, target.reactions_enabled, is_blocked=is_blocked)
+    try:
+        await query.message.edit_reply_markup(reply_markup=keyboard)
+    except TelegramError:
+        pass
 
 
 # بلاک از طریق پروفایلِ عمومی
@@ -155,13 +172,24 @@ async def handle_public_block_button(update: Update, context: ContextTypes.DEFAU
 
     await block_sender(owner_id, target_id)
     await query.message.reply_text("🚫 این کاربر بلاک شد و دیگه نمی‌تونه از طریق لینک/پروفایلت پیام یا درخواست چت بفرسته.")
+    await _refresh_block_button(query, owner_id, target_id)
+
+
+async def handle_public_unblock_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    await query.answer()
+
+    target_id = int(query.data.split(":", 1)[1])
+    owner_id = query.from_user.id
+
+    await unblock_sender(owner_id, target_id)
+    await query.message.reply_text("✅ این کاربر آنبلاک شد و دوباره می‌تونه برات پیام/درخواست چت بفرسته.")
+    await _refresh_block_button(query, owner_id, target_id)
 
 
 # درخواستِ چت
 async def handle_chat_request_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """هندلر دکمه‌ی «💬 درخواست چت» زیرِ پروفایلِ عمومی."""
-    from db import is_sender_blocked
-
     query = update.callback_query
     await query.answer()
 
@@ -187,9 +215,10 @@ async def handle_chat_request_button(update: Update, context: ContextTypes.DEFAU
         await query.message.reply_text("⚠️ این کاربر الان در یه چت فعال هست. بعداً تلاش کن.")
         return
 
+    # چکِ بلاک همیشه باید قبل از چکِ سایلنت باشه؛ وگرنه به کسی که واقعاً
+    # بلاک شده، پیامِ نامربوطِ «سایلنته» نشون داده می‌شه.
     if await is_sender_blocked(target_id, requester_id):
-        # بی‌سروصدا رد می‌شه؛ درخواست‌کننده متوجهِ بلاک‌بودنش نمی‌شه.
-        await query.message.reply_text("✅ درخواستت ثبت شد.")
+        await query.message.reply_text("🚫 این کاربر بلاکت کرده و امکانِ ارسالِ درخواستِ چت یا پیامِ دایرکت بهش نداری.")
         return
 
     target = await async_session_get_user(target_id)

@@ -640,6 +640,79 @@ async def kick_room_member(owner_id: int, target_user_id: int) -> tuple[dict | N
         }, None
 
 
+async def remove_banned_user_from_room(user_id: int) -> dict | None:
+    """وقتی judge.py/profile_judge.py یه کاربر رو بن می‌کنه، این تابع اثرش
+    رو روی اتاقِ چتِ فعلیِ اون کاربر (اگه عضوی از یه اتاق باشه) اعمال
+    می‌کنه. برخلافِ kick_room_member (که caller باید owner باشه و
+    وقتی آخرین عضو می‌مونه اتاق کاملاً "deleted" می‌شه)، اینجا:
+
+    - اگه بن‌شده owner بوده: فقط status اتاق "closed" می‌شه (نه
+      deleted)، چون این تصمیمِ خودِ owner نبوده و بقیه‌ی اعضا/تاریخچه‌ی
+      اتاق نباید ناپدید بشه؛ owner دیگه هیچ‌وقت نمی‌تونه بازش کنه چون
+      بن شده، ولی خودِ اتاق و عضویتِ بقیه دست‌نخورده می‌مونه.
+    - اگه بن‌شده عضوِ عادی بوده و آخرین عضوِ غیرِ owner بوده: از
+      عضویت خارج می‌شه و اتاق هم "closed" می‌شه (همون منطقِ بالا،
+      نه حذفِ کامل).
+    - اگه بن‌شده عضوِ عادی بوده ولی عضوِ دیگه‌ای هم مونده: فقط از
+      عضویت خارج می‌شه، وضعیتِ اتاق دست‌نخورده می‌مونه.
+
+    خروجی: dict با کلیدهای "outcome" (یکی از "owner_banned",
+    "member_banned_last", "member_banned")، room_id، و
+    remaining_member_ids (بدونِ خودِ کاربرِ بن‌شده)؛ یا None اگه کاربر
+    اصلاً عضوِ هیچ اتاقِ فعالی نبود."""
+    async with async_session() as session:
+        user = await session.get(User, user_id)
+        if user is None or user.active_room_id is None:
+            return None
+        room_id = user.active_room_id
+
+        room_result = await session.execute(
+            select(ChatRoom).where(ChatRoom.id == room_id).with_for_update()
+        )
+        room = room_result.scalar_one_or_none()
+        if room is None or room.status == RoomStatus.deleted:
+            return None
+
+        if room.owner_id == user_id:
+            room.status = RoomStatus.closed
+            await session.commit()
+            member_ids_result = await session.execute(
+                select(ChatRoomMember.user_id).where(ChatRoomMember.room_id == room_id)
+            )
+            remaining_member_ids = [
+                uid for uid in (row[0] for row in member_ids_result.all()) if uid != user_id
+            ]
+            return {"outcome": "owner_banned", "room_id": room_id, "remaining_member_ids": remaining_member_ids}
+
+        await session.execute(
+            delete(ChatRoomMember).where(
+                ChatRoomMember.room_id == room_id, ChatRoomMember.user_id == user_id
+            )
+        )
+        user.active_room_id = None
+
+        remaining_count = (
+            await session.execute(
+                select(func.count()).select_from(ChatRoomMember).where(ChatRoomMember.room_id == room_id)
+            )
+        ).scalar_one()
+        remaining_ids_result = await session.execute(
+            select(ChatRoomMember.user_id).where(ChatRoomMember.room_id == room_id)
+        )
+        remaining_member_ids = [row[0] for row in remaining_ids_result.all()]
+
+        is_last_member = remaining_count <= 1  # فقط owner مونده
+        if is_last_member:
+            room.status = RoomStatus.closed
+
+        await session.commit()
+        return {
+            "outcome": "member_banned_last" if is_last_member else "member_banned",
+            "room_id": room_id,
+            "remaining_member_ids": remaining_member_ids,
+        }
+
+
 async def set_room_open_status(owner_id: int, is_open: bool) -> tuple[dict | None, str | None]:
     """owner اتاقشو می‌بنده یا دوباره باز می‌کنه. برخلافِ حذف/اخراج،
     اینجا هیچ عضویتی تغییر نمی‌کنه؛ فقط status عوض می‌شه (open<->closed)
@@ -683,6 +756,24 @@ async def get_room_member_ids(room_id: int) -> list[int]:
             select(ChatRoomMember.user_id).where(ChatRoomMember.room_id == room_id)
         )
         return [row[0] for row in result.all()]
+
+
+async def get_room_members_detail(room_id: int) -> list[dict]:
+    """جزئیاتِ کاملِ اعضای یه اتاق برای دکمه‌ی «وضعیتِ اتاق»: نامِ
+    نمایشی + کدِ پروفایلِ عمومی، به‌ترتیبِ زمانِ پیوستن (owner همیشه
+    اول میاد چون ردیفِ عضویتش موقعِ ساختِ اتاق ثبت می‌شه، قبلِ هر
+    عضوِ دیگه‌ای)."""
+    async with async_session() as session:
+        result = await session.execute(
+            select(ChatRoomMember.user_id, User.display_name, User.referral_code)
+            .join(User, User.id == ChatRoomMember.user_id)
+            .where(ChatRoomMember.room_id == room_id)
+            .order_by(ChatRoomMember.joined_at)
+        )
+        return [
+            {"user_id": row.user_id, "display_name": row.display_name, "referral_code": row.referral_code}
+            for row in result.all()
+        ]
 
 
 async def get_display_name(user_id: int) -> str | None:
@@ -773,6 +864,16 @@ async def ban_user(user_id: int) -> None:
         if user is not None:
             user.is_banned = True
             await session.commit()
+
+
+async def is_user_banned(user_id: int) -> bool:
+    """گیتِ سراسریِ main.py قبل از هر هندلرِ دیگه‌ای این رو چک می‌کنه؛
+    قبلاً is_banned فقط از نتایجِ جستجوی نزدیک فیلتر می‌شد ولی خودِ
+    کاربرِ بن‌شده همچنان می‌تونست از ربات استفاده کنه."""
+    async with async_session() as session:
+        result = await session.execute(select(User.is_banned).where(User.id == user_id))
+        value = result.scalar_one_or_none()
+        return bool(value)
 
 
 async def get_user_profile_snapshot(user_id: int) -> dict | None:

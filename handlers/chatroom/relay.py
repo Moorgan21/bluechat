@@ -139,8 +139,7 @@ async def relay_room_edit(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     from datetime import datetime, timedelta, timezone
 
     edit_time = datetime.now(tz=timezone(timedelta(hours=3, minutes=30)))
-    time_str = edit_time.strftime("%H:%M")
-    secure = await rc.is_secure_chat(user_id)
+    time_str = edit_time.strftime("%Y-%m-%d %H:%M")
 
     recipients_map = await rc.get_room_msg_recipients(room_id, user_id, msg.message_id)
     for recipient_id, local_ids in recipients_map.items():
@@ -148,11 +147,14 @@ async def relay_room_edit(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             continue
         for mid in local_ids:
             try:
+                # editMessageText پارامترِ protect_content نداره (فقط
+                # موقعِ ارسالِ اولیه قابلِ‌تنظیمه)؛ قبلاً پاس‌دادنش اینجا
+                # یه TypeError (نه TelegramError) می‌داد که با except زیر
+                # گرفته نمی‌شد و کلِ ادیت رو می‌ترکوند.
                 await context.bot.edit_message_text(
                     chat_id=recipient_id,
                     message_id=mid,
                     text=f"{label}: {msg.text}\n\n✏️ ویرایش شده · {time_str}",
-                    protect_content=secure,
                 )
             except TelegramError:
                 pass
