@@ -880,16 +880,19 @@ async def clear_room_history_users(room_id: int) -> None:
 # بعد از حذفِ اتاق، ChatRoomMemberِ Postgres پاک می‌شه، پس دیگه راهی
 # نیست بفهمیم «کیا عضو بودن» تا تاریخچه‌شون رو پاک کنیم. این کلید
 # لیستِ اعضا رو لحظه‌ی حذف نگه می‌داره تا دکمه‌ی «پاک‌کردنِ تاریخچه»
-# (که به owner نشون داده می‌شه) بدونه کجا رو بگرده. TTLش با
-# TTL_MESSAGE_MAP یکیه چون بعدِ اون تلگرام دیگه اجازه‌ی حذف نمی‌ده.
+# (که به owner نشون داده می‌شه) بدونه کجا رو بگرده. برخلافِ خودِ
+# پیام‌ها (که TTLشون تا سقفِ حذفِ تلگرام، ۴۸ ساعت، زنده‌ست)، این
+# پیشنهاد فقط ۲ دقیقه معتبره — هم‌راستا با پنجره‌ی پاکسازی/گزارشِ
+# بعدِ پایانِ چتِ ۱به۱.
 KEY_DELETED_ROOM_MEMBERS = "bluechat:deleted_room_members:{room_id}"
+TTL_ROOM_PURGE_OFFER = 60 * 2  # ۲ دقیقه مهلتِ معتبربودنِ پیشنهادِ پاک‌سازیِ تاریخچه‌ی اتاق
 
 
 async def store_deleted_room_members(room_id: int, member_ids: list[int]) -> None:
     await r.set(
         KEY_DELETED_ROOM_MEMBERS.format(room_id=room_id),
         json.dumps(member_ids),
-        ex=TTL_MESSAGE_MAP,
+        ex=TTL_ROOM_PURGE_OFFER,
     )
 
 

@@ -192,6 +192,37 @@ async def test_kick_auto_deletes_when_only_owner_remains(make_user):
     owner_msgs = [c.args[1] for c in context.bot.send_message.await_args_list if c.args[0] == owner.id]
     assert any("خودکار حذف شد" in t for t in owner_msgs)
 
+    # عضوِ اخراج‌شده قبل از اخراج پیام فرستاده بود، پس باید پیشنهادِ
+    # پاک‌سازیِ ۲دقیقه‌ای هم بیاد، نه فقط اطلاعِ حذفِ خودکار.
+    purge_offer = next((t for t in owner_msgs if "پاک کنم" in t), None)
+    assert purge_offer is not None
+    assert "۲ دقیقه" in purge_offer
+    stored = await rc.get_deleted_room_members(room.id)
+    assert stored is not None and member.id in stored
+
+    await _cleanup_room(room.id)
+
+
+async def test_kick_auto_delete_with_no_history_shows_no_history_message(make_user):
+    """اگه هیچ‌کس تو این اتاق پیامی نفرستاده باشه، نباید پیشنهادِ الکیِ
+    پاک‌سازی بیاد؛ باید صراحتاً بگه تاریخچه‌ای نیست."""
+    room, (owner, member) = await _make_room(make_user, member_count=1)
+
+    from db import kick_room_member
+    from handlers.chatroom.moderation import offer_room_history_purge
+
+    result, error = await kick_room_member(owner.id, member.id)
+    assert error is None
+    assert result["auto_deleted"] is True
+
+    context = _make_context()
+    await offer_room_history_purge(context, result["room_id"], owner.id, result["remaining_member_ids"])
+
+    owner_msgs = [c.args[1] for c in context.bot.send_message.await_args_list if c.args[0] == owner.id]
+    assert any("این اتاق هیچ پیامی نداشت" in t for t in owner_msgs)
+    assert not any("پاک کنم" in t for t in owner_msgs)
+    assert await rc.get_deleted_room_members(room.id) is None
+
     await _cleanup_room(room.id)
 
 
@@ -348,6 +379,66 @@ async def test_purge_history_expired_shows_message(make_user):
 
     query.edit_message_text.assert_awaited_once()
     assert "معتبر نیست" in query.edit_message_text.await_args.args[0]
+
+
+async def test_store_deleted_room_members_ttl_is_two_minutes(make_user):
+    room, (owner, member) = await _make_room(make_user, member_count=1)
+
+    await rc.store_deleted_room_members(room.id, [owner.id, member.id])
+
+    ttl = await rc.r.ttl(rc.KEY_DELETED_ROOM_MEMBERS.format(room_id=room.id))
+    assert 0 < ttl <= rc.TTL_ROOM_PURGE_OFFER
+
+    await _cleanup_room(room.id)
+
+
+async def test_offer_room_history_purge_sets_two_minute_ttl(make_user):
+    room, (owner, member) = await _make_room(make_user, member_count=1)
+    context = _make_context()
+
+    msg = _make_message(710, text="سلام")
+    await relay.relay_room_message(_make_update(msg, owner.id), context, room.id)
+
+    context2 = _make_context()
+    await moderation.offer_room_history_purge(context2, room.id, owner.id, [owner.id, member.id])
+
+    text = context2.bot.send_message.await_args.args[1]
+    assert "۲ دقیقه" in text
+    ttl = await rc.r.ttl(rc.KEY_DELETED_ROOM_MEMBERS.format(room_id=room.id))
+    assert 0 < ttl <= rc.TTL_ROOM_PURGE_OFFER
+
+    await _cleanup_room(room.id)
+
+
+async def test_offer_room_history_purge_with_no_history_skips_offer(make_user):
+    room, (owner, member) = await _make_room(make_user, member_count=1)
+    context = _make_context()
+
+    await moderation.offer_room_history_purge(context, room.id, owner.id, [owner.id, member.id])
+
+    text = context.bot.send_message.await_args.args[1]
+    assert "تاریخچه‌ای برای پاک‌سازی وجود نداره" in text
+    assert await rc.get_deleted_room_members(room.id) is None
+
+    await _cleanup_room(room.id)
+
+
+async def test_purge_history_callback_with_already_empty_history_reports_no_history(make_user):
+    """اگه (مثلاً چون پیام‌ها قبلاً یکی‌یکی با «حذف» پاک شده بودن)
+    موقعِ کلیکِ پاک‌سازی هیچ پیامی برای حذف پیدا نشه، باید صراحتاً
+    بگه چیزی برای پاک‌سازی نبود، نه پیامِ گمراه‌کننده‌ی «۰ پیام پاک شد»."""
+    room, (owner, member) = await _make_room(make_user, member_count=1)
+
+    await rc.store_deleted_room_members(room.id, [owner.id, member.id])
+
+    context = _make_context()
+    query = _make_query(owner.id, f"roompurge:{room.id}")
+    await moderation.purge_history_callback(_make_callback_update(query), context)
+
+    text = context.bot.send_message.await_args.args[1]
+    assert "تاریخچه‌ای برای پاک‌سازی پیدا نشد" in text
+
+    await _cleanup_room(room.id)
 
 
 async def test_purge_history_includes_member_who_left_before_room_deletion(make_user):

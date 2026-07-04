@@ -88,24 +88,49 @@ async def delete_room_confirm_callback(update: Update, context: ContextTypes.DEF
 
     # ChatRoomMemberِ Postgres همین الان پاک شد، پس اگه بعداً بخوایم
     # تاریخچه رو پاک کنیم دیگه نمی‌تونیم بفهمیم اعضا کیا بودن؛ برای
-    # همین لیست رو تو Redis نگه می‌داریم (TTLِ هم‌راستا با محدودیتِ
-    # حذفِ پیامِ تلگرام). result["member_ids"] فقط عضوهای *فعلیِ* لحظه‌ی
-    # حذفه؛ برای اینکه واقعاً «همه‌ی اعضای سابق» پاک بشه (کسی که قبل‌تر
-    # ترک کرده/اخراج شده/بن شده هم شامل بشه)، با تاریخچه‌ی ثبت‌شده‌ی
-    # خودِ Redis (که مستقل از عضویتِ زنده‌ست) یکی می‌شه.
-    history_user_ids = await rc.get_room_history_user_ids(result["room_id"])
-    all_time_member_ids = sorted(set(result["member_ids"]) | history_user_ids)
-    await rc.store_deleted_room_members(result["room_id"], all_time_member_ids)
-    await context.bot.send_message(
-        user_id,
-        "🧹 می‌خوای کاملِ تاریخچه‌ی پیام‌های این اتاق رو (برای همه‌ی اعضای سابق) پاک کنم؟",
-        reply_markup=purge_history_keyboard(result["room_id"]),
-    )
+    # همین لیست رو تو Redis نگه می‌داریم. result["member_ids"] فقط
+    # عضوهای *فعلیِ* لحظه‌ی حذفه؛ برای اینکه واقعاً «همه‌ی اعضای سابق»
+    # پاک بشه (کسی که قبل‌تر ترک کرده/اخراج شده/بن شده هم شامل بشه)،
+    # offer_room_history_purge با تاریخچه‌ی ثبت‌شده‌ی خودِ Redis (که
+    # مستقل از عضویتِ زنده‌ست) یکی‌شون می‌کنه.
+    await offer_room_history_purge(context, result["room_id"], user_id, result["member_ids"])
+
+
+async def offer_room_history_purge(
+    context: ContextTypes.DEFAULT_TYPE, room_id: int, owner_id: int, member_ids: list[int]
+) -> None:
+    """بعد از حذفِ اتاق (چه با دکمه‌ی «🗑 حذف اتاق»، چه خودکار به‌خاطرِ
+    ترک/اخراجِ آخرین عضوِ غیرِ owner در membership.py/relay.py)، اگه
+    این اتاق واقعاً تاریخچه‌ای داشته، پیشنهادِ پاک‌سازیِ کامل رو به
+    owner می‌ده — فقط تا ۲ دقیقه معتبر (TTL_ROOM_PURGE_OFFER)، هم‌راستا
+    با پنجره‌ی پاکسازی/گزارشِ بعدِ پایانِ چتِ ۱به۱. اگه اصلاً پیامی تو
+    این اتاق رد و بدل نشده بود، به‌جای پیشنهادِ الکی، صراحتاً می‌گه
+    تاریخچه‌ای برای پاک‌سازی وجود نداره."""
+    history_user_ids = await rc.get_room_history_user_ids(room_id)
+    if not history_user_ids:
+        try:
+            await context.bot.send_message(owner_id, "ℹ️ این اتاق هیچ پیامی نداشت؛ تاریخچه‌ای برای پاک‌سازی وجود نداره.")
+        except TelegramError:
+            logger.warning("امکانِ اطلاع‌رسانیِ نبودِ تاریخچه به owner_id=%s وجود نداشت.", owner_id)
+        return
+
+    all_time_member_ids = sorted(set(member_ids) | history_user_ids)
+    await rc.store_deleted_room_members(room_id, all_time_member_ids)
+    try:
+        await context.bot.send_message(
+            owner_id,
+            "🧹 می‌خوای کاملِ تاریخچه‌ی پیام‌های این اتاق رو (برای همه‌ی اعضای سابق) پاک کنم؟\n"
+            "⏳ این پیشنهاد فقط تا ۲ دقیقه معتبره.",
+            reply_markup=purge_history_keyboard(room_id),
+        )
+    except TelegramError:
+        logger.warning("امکانِ ارسالِ پیشنهادِ پاک‌سازیِ تاریخچه به owner_id=%s وجود نداشت.", owner_id)
 
 
 async def purge_history_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """فقط از طریقِ پیامِ بعدِ حذفِ اتاق قابلِ‌دسترسیه (roomdelete نه
-    خودِ اتاق، چون تا اونجا active_room_idِ owner دیگه معتبر نیست)."""
+    """فقط از طریقِ پیامِ پیشنهادِ offer_room_history_purge قابلِ‌دسترسیه
+    (roomdelete نه خودِ اتاق، چون تا اونجا active_room_idِ owner دیگه
+    معتبر نیست)، و فقط تا ۲ دقیقه (TTL_ROOM_PURGE_OFFER) بعدِ اون پیشنهاد."""
     query = update.callback_query
     await query.answer()
     room_id = int(query.data.split(":", 1)[1])
@@ -113,7 +138,7 @@ async def purge_history_callback(update: Update, context: ContextTypes.DEFAULT_T
 
     member_ids = await rc.get_deleted_room_members(room_id)
     if member_ids is None:
-        await query.edit_message_text("این درخواست دیگه معتبر نیست (منقضی شده یا قبلاً پاک شده).")
+        await query.edit_message_text("⚠️ این درخواست دیگه معتبر نیست (مهلتِ ۲دقیقه‌ای گذشته یا قبلاً پاک شده).")
         return
 
     try:
@@ -131,6 +156,10 @@ async def purge_history_callback(update: Update, context: ContextTypes.DEFAULT_T
             except TelegramError:
                 skipped_count += 1
     await rc.clear_room_history_users(room_id)
+
+    if deleted_count == 0 and skipped_count == 0:
+        await context.bot.send_message(user_id, "ℹ️ تاریخچه‌ای برای پاک‌سازی پیدا نشد (شاید قبلاً پاک شده بود).")
+        return
 
     summary = f"✅ {deleted_count} پیام پاک شد."
     if skipped_count:

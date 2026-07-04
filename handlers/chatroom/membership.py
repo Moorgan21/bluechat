@@ -68,6 +68,10 @@ async def leave_room_button(update: Update, context: ContextTypes.DEFAULT_TYPE) 
                 )
             except TelegramError:
                 logger.warning("امکانِ اطلاع‌رسانیِ حذفِ خودکار به owner_id=%s وجود نداشت.", uid)
+
+        from .moderation import offer_room_history_purge
+
+        await offer_room_history_purge(context, result["room_id"], result["owner_id"], result["remaining_member_ids"])
     else:
         display_name = await get_display_name(user_id) or "یه نفر"
         from .relay import broadcast_system_message

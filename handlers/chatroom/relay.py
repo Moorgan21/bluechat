@@ -318,6 +318,10 @@ async def _handle_kick_command(update: Update, context: ContextTypes.DEFAULT_TYP
                 )
             except TelegramError:
                 pass
+
+        from .moderation import offer_room_history_purge
+
+        await offer_room_history_purge(context, result["room_id"], owner_id, result["remaining_member_ids"])
     else:
         await broadcast_system_message(
             room.id, f"{display_name} اخراج شد.", context, member_ids=result["remaining_member_ids"]

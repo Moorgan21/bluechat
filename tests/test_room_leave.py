@@ -181,10 +181,66 @@ async def test_leave_room_button_auto_delete_notifies_owner(make_user):
 
     assert await rc.get_active_room(owner.id) is None
     owner_calls = [c for c in context.bot.send_message.await_args_list if c.args[0] == owner.id]
-    assert len(owner_calls) == 1
-    assert "خودکار حذف شد" in owner_calls[0].args[1]
+    assert any("خودکار حذف شد" in c.args[1] for c in owner_calls)
+    # هیچ پیامی تو این اتاق رد و بدل نشده بود، پس باید صراحتاً بگه تاریخچه‌ای نیست
+    assert any("تاریخچه‌ای برای پاک‌سازی وجود نداره" in c.args[1] for c in owner_calls)
+    assert await rc.get_deleted_room_members(room.id) is None  # پیشنهادِ پاک‌سازی ارائه نشده
 
     await _cleanup_room(room.id)
+
+
+async def test_leave_room_button_auto_delete_offers_purge_when_history_exists(make_user):
+    room, (owner, member) = await _make_room(make_user, member_count=1)
+    from handlers.chatroom import relay
+
+    relay_context = MagicMock()
+    relay_context.bot = MagicMock()
+    _next_id = [8000]
+
+    async def _fake_send_message(*args, **kwargs):
+        _next_id[0] += 1
+        sent = MagicMock()
+        sent.message_id = _next_id[0]
+        return sent
+
+    relay_context.bot.send_message = AsyncMock(side_effect=_fake_send_message)
+    await relay.relay_room_message(
+        _make_relay_update(_make_relay_message(500, text="سلام"), member.id), relay_context, room.id
+    )
+
+    context = _make_context()
+    update = _make_update(member.id)
+    await membership.leave_room_button(update, context)
+
+    owner_calls = [c for c in context.bot.send_message.await_args_list if c.args[0] == owner.id]
+    purge_offer = next((c for c in owner_calls if "پاک کنم" in c.args[1]), None)
+    assert purge_offer is not None
+    assert "۲ دقیقه" in purge_offer.args[1]
+    assert purge_offer.kwargs["reply_markup"] is not None
+
+    stored = await rc.get_deleted_room_members(room.id)
+    assert stored is not None and owner.id in stored and member.id in stored
+
+    await _cleanup_room(room.id)
+
+
+def _make_relay_message(message_id, text=None):
+    msg = MagicMock()
+    msg.message_id = message_id
+    msg.text = text
+    msg.caption = None
+    msg.reply_to_message = None
+    for field in ("photo", "sticker", "voice", "audio", "video", "video_note", "document", "animation"):
+        setattr(msg, field, None)
+    return msg
+
+
+def _make_relay_update(msg, user_id):
+    update = MagicMock()
+    update.message = msg
+    update.effective_message = msg
+    update.effective_user.id = user_id
+    return update
 
 
 async def test_leave_room_button_stale_redis_self_heals(make_user):

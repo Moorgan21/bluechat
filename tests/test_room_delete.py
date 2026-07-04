@@ -154,6 +154,11 @@ async def test_delete_room_confirm_removes_room_and_notifies_everyone(make_user)
         u.display_name = "علی"
         await session.commit()
 
+    # این اتاق باید تاریخچه داشته باشه، وگرنه پیشنهادِ پاک‌سازی نمیاد
+    # (به‌جاش پیامِ «هیچ پیامی نداشت» می‌ره) و این تست شکست می‌خوره.
+    await rc.record_room_message(room.id, owner.id, 1001)
+    await rc.record_room_message(room.id, member.id, 1002)
+
     query = _make_query(owner.id, "roomdelete:confirm")
     context = _make_context()
 
