@@ -808,6 +808,12 @@ async def is_room_ui_suppressed(user_id: int) -> bool:
 KEY_ROOM_MSG_RECIPIENTS = "bluechat:room_msg_recipients:{room_id}:{sender_id}:{sender_msg_id}"
 KEY_ROOM_MSG_ORIGIN = "bluechat:room_msg_origin:{room_id}:{viewer_id}:{viewer_msg_id}"
 KEY_ROOM_HISTORY = "bluechat:room_history:{room_id}:{user_id}"  # لیستِ message_idهای رسیده به این کاربر در این اتاق
+# ChatRoomMemberِ Postgres فقط عضویتِ *فعلی* رو نشون می‌ده؛ کسی که قبل
+# از حذفِ نهاییِ اتاق ترک کرده/اخراج شده/بن شده دیگه توش نیست. این SET
+# مستقل از عضویتِ زنده، هرکسی که تا حالا تو این اتاق پیامی record شده
+# (چه فرستاده چه گرفته) رو نگه می‌داره تا پاک‌سازیِ کاملِ تاریخچه واقعاً
+# شاملِ «همه‌ی اعضای سابق» بشه، نه فقط اونایی که لحظه‌ی حذف هنوز عضو بودن.
+KEY_ROOM_HISTORY_USERS = "bluechat:room_history_users:{room_id}"
 
 
 async def set_room_msg_recipient_ids(
@@ -847,12 +853,28 @@ async def record_room_message(room_id: int, user_id: int, message_id: int) -> No
     await r.rpush(key, message_id)
     await r.expire(key, TTL_MESSAGE_MAP)
 
+    users_key = KEY_ROOM_HISTORY_USERS.format(room_id=room_id)
+    await r.sadd(users_key, user_id)
+    await r.expire(users_key, TTL_MESSAGE_MAP)
+
 
 async def pop_room_history(room_id: int, user_id: int) -> list[int]:
     key = KEY_ROOM_HISTORY.format(room_id=room_id, user_id=user_id)
     ids = await r.lrange(key, 0, -1)
     await r.delete(key)
     return [int(i) for i in ids]
+
+
+async def get_room_history_user_ids(room_id: int) -> set[int]:
+    """هرکسی که تا حالا تو این اتاق پیامی record شده، صرف‌نظر از اینکه
+    الان هنوز عضوه یا نه (ترک کرده/اخراج شده/بن شده). برای اینکه
+    پاک‌سازیِ کاملِ تاریخچه بعدِ حذفِ اتاق، اعضای سابق رو هم بگیره."""
+    members = await r.smembers(KEY_ROOM_HISTORY_USERS.format(room_id=room_id))
+    return {int(uid) for uid in members}
+
+
+async def clear_room_history_users(room_id: int) -> None:
+    await r.delete(KEY_ROOM_HISTORY_USERS.format(room_id=room_id))
 
 
 # بعد از حذفِ اتاق، ChatRoomMemberِ Postgres پاک می‌شه، پس دیگه راهی

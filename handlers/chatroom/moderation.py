@@ -89,8 +89,13 @@ async def delete_room_confirm_callback(update: Update, context: ContextTypes.DEF
     # ChatRoomMemberِ Postgres همین الان پاک شد، پس اگه بعداً بخوایم
     # تاریخچه رو پاک کنیم دیگه نمی‌تونیم بفهمیم اعضا کیا بودن؛ برای
     # همین لیست رو تو Redis نگه می‌داریم (TTLِ هم‌راستا با محدودیتِ
-    # حذفِ پیامِ تلگرام).
-    await rc.store_deleted_room_members(result["room_id"], result["member_ids"])
+    # حذفِ پیامِ تلگرام). result["member_ids"] فقط عضوهای *فعلیِ* لحظه‌ی
+    # حذفه؛ برای اینکه واقعاً «همه‌ی اعضای سابق» پاک بشه (کسی که قبل‌تر
+    # ترک کرده/اخراج شده/بن شده هم شامل بشه)، با تاریخچه‌ی ثبت‌شده‌ی
+    # خودِ Redis (که مستقل از عضویتِ زنده‌ست) یکی می‌شه.
+    history_user_ids = await rc.get_room_history_user_ids(result["room_id"])
+    all_time_member_ids = sorted(set(result["member_ids"]) | history_user_ids)
+    await rc.store_deleted_room_members(result["room_id"], all_time_member_ids)
     await context.bot.send_message(
         user_id,
         "🧹 می‌خوای کاملِ تاریخچه‌ی پیام‌های این اتاق رو (برای همه‌ی اعضای سابق) پاک کنم؟",
@@ -125,6 +130,7 @@ async def purge_history_callback(update: Update, context: ContextTypes.DEFAULT_T
                 deleted_count += 1
             except TelegramError:
                 skipped_count += 1
+    await rc.clear_room_history_users(room_id)
 
     summary = f"✅ {deleted_count} پیام پاک شد."
     if skipped_count:

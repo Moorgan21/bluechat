@@ -348,3 +348,53 @@ async def test_purge_history_expired_shows_message(make_user):
 
     query.edit_message_text.assert_awaited_once()
     assert "معتبر نیست" in query.edit_message_text.await_args.args[0]
+
+
+async def test_purge_history_includes_member_who_left_before_room_deletion(make_user):
+    """رگرسیون: result["member_ids"]ِ delete_chat_room فقط عضوهای *فعلیِ*
+    لحظه‌ی حذفه؛ کسی که قبل‌تر ترک کرده باید همچنان تو پاک‌سازیِ کامل
+    باشه، چون متنِ خودِ دکمه صراحتاً «همه‌ی اعضای سابق» رو وعده می‌ده."""
+    room, (owner, leaver, stayer) = await _make_room(make_user, member_count=2)
+    context = _make_context()
+
+    leaver_msg = _make_message(900, text="پیامِ عضوی که بعداً ترک می‌کنه")
+    await relay.relay_room_message(_make_update(leaver_msg, leaver.id), context, room.id)
+
+    # عضو قبل از حذفِ اتاق ترک می‌کنه؛ دیگه تو ChatRoomMember نیست
+    leave_result, leave_error = await db.leave_chat_room(leaver.id)
+    assert leave_error is None
+    assert leave_result["auto_deleted"] is False  # هنوز owner + stayer موندن
+
+    delete_query = _make_query(owner.id, "roomdelete:confirm")
+    await moderation.delete_room_confirm_callback(_make_callback_update(delete_query), context)
+
+    stored_members = await rc.get_deleted_room_members(room.id)
+    assert leaver.id in stored_members  # با وجودِ ترکِ قبلی، همچنان تو لیستِ پاک‌سازیه
+    assert owner.id in stored_members
+    assert stayer.id in stored_members
+
+    context2 = _make_context()
+    purge_query = _make_query(owner.id, f"roompurge:{room.id}")
+    await moderation.purge_history_callback(_make_callback_update(purge_query), context2)
+
+    deleted_chat_ids = {c.args[0] for c in context2.bot.delete_message.await_args_list}
+    assert leaver.id in deleted_chat_ids  # پیامِ عضوِ سابق هم واقعاً پاک شده
+
+    # بعدِ پاک‌سازیِ کامل، ردِ تاریخچه‌ی اعضا هم جمع بشه
+    assert await rc.get_room_history_user_ids(room.id) == set()
+
+
+async def test_room_history_users_scoped_per_room(make_user):
+    """هر room_id شناسه‌ی یکتای Postgresه (autoincrement)، پس هیچ‌وقت
+    برای دو اتاقِ متفاوت تکرار نمی‌شه؛ این تست همون تضمین رو صراحتاً
+    برای ردگیریِ اعضای سابق (KEY_ROOM_HISTORY_USERS) هم می‌سنجه تا
+    پاک‌سازیِ یه اتاق هیچ‌وقت به اتاقِ دیگه‌ای نشت نکنه."""
+    room_a, (owner_a, member_a) = await _make_room(make_user, member_count=1)
+    room_b, (owner_b, member_b) = await _make_room(make_user, member_count=1)
+    context = _make_context()
+
+    await relay.relay_room_message(_make_update(_make_message(910, text="A"), member_a.id), context, room_a.id)
+    await relay.relay_room_message(_make_update(_make_message(920, text="B"), member_b.id), context, room_b.id)
+
+    assert await rc.get_room_history_user_ids(room_a.id) == {owner_a.id, member_a.id}
+    assert await rc.get_room_history_user_ids(room_b.id) == {owner_b.id, member_b.id}
