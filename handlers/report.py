@@ -139,6 +139,14 @@ async def start_report_after_chat(update: Update, context: ContextTypes.DEFAULT_
         await query.message.reply_text("⚠️ این درخواست دیگه معتبر نیست (مهلتِ ۲دقیقه‌ای گذشته).")
         return
 
+    # این گفتگو اصلاً پیامی نداشته (offer_history_deletion هم به همین
+    # دلیل اصلاً این دکمه رو نشون نمی‌ده، ولی این چک دفاعیه برای هر
+    # حالتِ لبه‌ی دیگه‌ای که این callback رسیده باشه)؛ گزارش‌دادن بدونِ
+    # هیچ متنی معنی نداره و فقط یه Report/AI job الکی می‌سازه.
+    if not await rc.has_chat_history(reporter_id, session_id) and not await rc.has_chat_history(reported_id, session_id):
+        await query.message.reply_text("ℹ️ این گفتگو هیچ پیامی نداشت؛ چیزی برای گزارش‌دادن وجود نداره.")
+        return
+
     keyboard = report_reason_keyboard(reported_id=reported_id, session_id=session_id)
     await query.message.reply_text("دلیل گزارش رو انتخاب کن:", reply_markup=keyboard)
 

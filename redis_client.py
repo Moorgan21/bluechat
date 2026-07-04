@@ -370,6 +370,15 @@ async def record_message(user_id: int, message_id: int, session_id: Optional[int
     await r.expire(key, TTL_MESSAGE_MAP)
 
 
+async def has_chat_history(user_id: int, session_id: Optional[int] = None) -> bool:
+    """چکِ غیرمخربِ «آیا این گفتگو اصلاً پیامی داشته؟» (برخلافِ
+    pop_history که لیست رو هم می‌خونه هم پاک می‌کنه). برای تصمیم‌گیریِ
+    offer_history_deletion/start_report_after_chat قبل از پیشنهادِ
+    پاک‌سازی/گزارش به یه گفتگوی کاملاً خالی لازمه."""
+    key = KEY_CHAT_HISTORY.format(session_key=_history_session_key(session_id, user_id), user_id=user_id)
+    return bool(await r.llen(key))
+
+
 async def mark_own_message(user_id: int, message_id: int) -> None:
     """پیامی که خودِ کاربر فرستاده رو علامت می‌زنه تا بعداً قابل حذف باشه."""
     key = KEY_OWN_SENT_MSGS.format(user_id=user_id)

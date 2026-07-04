@@ -127,6 +127,7 @@ async def test_report_after_chat_allowed_within_window(make_user):
     b = await make_user()
     session_id = await _make_session(a.id, b.id)
     await rc.start_pending_delete(a.id, b.id, session_id)
+    await rc.record_message(a.id, 1, session_id)  # این گفتگو پیام داشته، پس گزارش‌دادن معنی داره
 
     update = _make_callback_update(a.id, f"reportsession:{b.id}:{session_id}")
     update.callback_query.message.reply_text = AsyncMock()
@@ -160,5 +161,82 @@ async def test_auto_purge_job_clears_server_history_without_touching_telegram(ma
 
     # ولی به هیچ‌کدوم پیامِ تلگرامی برای حذفِ خودِ پیام‌ها فرستاده نشده
     context.bot.delete_message.assert_not_awaited()
+
+    await _cleanup_session(session_id)
+
+
+async def test_offer_history_deletion_skips_offer_when_chat_was_empty(make_user):
+    a = await make_user()
+    b = await make_user()
+    session_id = await _make_session(a.id, b.id)
+
+    context = _make_context()
+    await chat_extras.offer_history_deletion(a.id, b.id, context, session_id)
+
+    texts = {c.args[0]: c.args[1] for c in context.bot.send_message.await_args_list}
+    assert "هیچ پیامی نداشت" in texts[a.id]
+    assert "هیچ پیامی نداشت" in texts[b.id]
+    assert "پاک کردن تاریخچه" not in texts[a.id]
+
+    # نه پیشنهادِ حذفی فعال شده، نه jobِ auto-purgeای زمان‌بندی شده
+    assert await rc.get_pending_delete_set(a.id, b.id, session_id) is None
+    context.job_queue.run_once.assert_not_called()
+
+    await _cleanup_session(session_id)
+
+
+async def test_offer_history_deletion_proceeds_when_history_exists(make_user):
+    a = await make_user()
+    b = await make_user()
+    session_id = await _make_session(a.id, b.id)
+    await rc.record_message(a.id, 1, session_id)
+
+    context = _make_context()
+    await chat_extras.offer_history_deletion(a.id, b.id, context, session_id)
+
+    texts = [c.args[1] for c in context.bot.send_message.await_args_list]
+    assert any("۲ دقیقه" in t for t in texts)
+    assert not any("هیچ پیامی نداشت" in t for t in texts)
+    context.job_queue.run_once.assert_called_once()
+
+    await rc.clear_pending_delete(a.id, b.id, session_id)
+    await _cleanup_session(session_id)
+
+
+async def test_delete_history_callback_with_no_actual_messages_reports_nothing_found(make_user):
+    """حالتِ لبه: pending_delete هنوز فعاله و هر دو تایید می‌کنن، ولی
+    (مثلاً چون jobِ auto-purge بینِ این دو کلیک زودتر رسیده) دیگه
+    پیامی برای پاپ‌کردن نمونده؛ نباید «پاک شد»ِ گمراه‌کننده بگه."""
+    a = await make_user()
+    b = await make_user()
+    session_id = await _make_session(a.id, b.id)
+    await rc.start_pending_delete(a.id, b.id, session_id)
+
+    update_a = _make_callback_update(a.id, f"delhist:{a.id}:{b.id}:{session_id}")
+    await chat_extras.handle_delete_history_callback(update_a, _make_context())
+
+    context_b = _make_context()
+    update_b = _make_callback_update(b.id, f"delhist:{a.id}:{b.id}:{session_id}")
+    await chat_extras.handle_delete_history_callback(update_b, context_b)
+
+    texts = [c.args[1] for c in context_b.bot.send_message.await_args_list]
+    assert any("تاریخچه‌ای برای پاک‌سازی پیدا نشد" in t for t in texts)
+    assert not any(t == "✅ تاریخچه‌ی این گفتگو برای هر دو طرف پاک شد." for t in texts)
+
+    await _cleanup_session(session_id)
+
+
+async def test_report_after_chat_with_no_history_reports_nothing_to_report(make_user):
+    a = await make_user()
+    b = await make_user()
+    session_id = await _make_session(a.id, b.id)
+    await rc.start_pending_delete(a.id, b.id, session_id)  # پنجره فعاله، ولی پیامی رد و بدل نشده
+
+    update = _make_callback_update(a.id, f"reportsession:{b.id}:{session_id}")
+    update.callback_query.message.reply_text = AsyncMock()
+    await report.start_report_after_chat(update, _make_context())
+
+    text = update.callback_query.message.reply_text.await_args.args[0]
+    assert "چیزی برای گزارش‌دادن وجود نداره" in text
 
     await _cleanup_session(session_id)

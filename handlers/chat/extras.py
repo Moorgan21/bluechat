@@ -126,6 +126,17 @@ async def toggle_secure_chat_button(update: Update, context: ContextTypes.DEFAUL
 async def offer_history_deletion(
     user_a: int, user_b: int, context: ContextTypes.DEFAULT_TYPE, session_id: int | None
 ) -> None:
+    # اگه اصلاً پیامی رد و بدل نشده، پیشنهادِ پاک‌سازی/گزارش الکیه؛ به‌جاش
+    # صراحتاً می‌گیم چیزی برای این دو کار نیست (نه دکمه‌ای، نه jobِ
+    # auto-purge‌ای که چیزِ خالی رو «پاک» کنه).
+    if not await rc.has_chat_history(user_a, session_id) and not await rc.has_chat_history(user_b, session_id):
+        for uid in (user_a, user_b):
+            try:
+                await context.bot.send_message(uid, "ℹ️ این گفتگو هیچ پیامی نداشت؛ چیزی برای پاک‌سازی یا گزارش‌دادن وجود نداره.")
+            except TelegramError:
+                logger.warning("امکان اطلاع‌رسانیِ نبودِ تاریخچه به user_id=%s وجود نداشت.", uid)
+        return
+
     await rc.start_pending_delete(user_a, user_b, session_id)
 
     text = (
@@ -218,9 +229,11 @@ async def handle_delete_history_callback(update: Update, context: ContextTypes.D
         job.schedule_removal()
     await query.edit_message_text("در حال پاک‌کردن تاریخچه برای هر دو طرف... 🗑")
 
+    any_deleted = False
     for uid in (user_a, user_b):
         message_ids = await rc.pop_history(uid, session_id)
         for mid in message_ids:
+            any_deleted = True
             try:
                 await context.bot.delete_message(chat_id=uid, message_id=mid)
             except TelegramError:
@@ -231,8 +244,12 @@ async def handle_delete_history_callback(update: Update, context: ContextTypes.D
     if session_id is not None:
         await mark_session_history_deleted(session_id)
 
+    # حالتِ لبه: بینِ پیشنهاد و کلیک، تاریخچه از یه راهِ دیگه (مثلاً
+    # همون jobِ auto-purge) خالی شده — به‌جای «پاک شد»ِ گمراه‌کننده،
+    # صراحتاً می‌گیم چیزی برای پاک‌سازی نبود.
+    summary = "✅ تاریخچه‌ی این گفتگو برای هر دو طرف پاک شد." if any_deleted else "ℹ️ تاریخچه‌ای برای پاک‌سازی پیدا نشد (شاید قبلاً پاک شده بود)."
     for uid in (user_a, user_b):
         try:
-            await context.bot.send_message(uid, "✅ تاریخچه‌ی این گفتگو برای هر دو طرف پاک شد.")
+            await context.bot.send_message(uid, summary)
         except TelegramError:
             pass
