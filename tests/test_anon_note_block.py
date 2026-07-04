@@ -2,7 +2,9 @@
 هم جلوی پیامِ ناشناسِ جدید رو بگیره هم جلوی زنجیره‌ی پاسخ‌ها
 (handle_pending_reply_input) رو، وگرنه طرفِ بلاک‌شده می‌تونه از طریقِ
 دکمه‌ی «↩️ پاسخ دادن» دوباره برای صاحبِ لینک پیام بفرسته. فرستنده‌ی
-بلاک‌شده باید صراحتاً باخبر بشه (نه یه موفقیتِ ساختگی)."""
+بلاک‌شده باید صراحتاً باخبر بشه (نه یه موفقیتِ ساختگی)، و این چک باید
+همینطور موقعِ زدنِ خودِ دکمه‌ی «↩️ پاسخ دادن» (handle_reply_button) هم
+انجام بشه، نه فقط لحظه‌ی ارسالِ واقعیِ پاسخ."""
 
 from unittest.mock import AsyncMock, MagicMock
 
@@ -29,6 +31,17 @@ def _make_context():
     context.bot.send_message = AsyncMock()
     context.bot.copy_message = AsyncMock()
     return context
+
+
+def _make_callback_update(user_id: int):
+    query = MagicMock()
+    query.from_user.id = user_id
+    query.answer = AsyncMock()
+    query.message = MagicMock()
+    query.message.reply_text = AsyncMock()
+    update = MagicMock()
+    update.callback_query = query
+    return update
 
 
 async def _cleanup_block(owner_id: int) -> None:
@@ -89,3 +102,41 @@ async def test_reply_chain_delivers_when_not_blocked(make_user):
 
     context.bot.copy_message.assert_awaited_once()
     assert context.bot.copy_message.await_args.kwargs["chat_id"] == b.id
+
+
+async def test_reply_button_blocked_recipient_gets_explicit_notice(make_user):
+    """a قبلاً از طریقِ لینکِ ناشناسِ b براش پیام فرستاده. حالا a (که
+    هویتِ b رو از طریقِ خودِ لینک می‌دونه) از پروفایلِ عمومیِ b،
+    b رو بلاک کرده. اگه b بخواد به همون پیام جواب بده، چون گیرنده
+    (a) فرستنده (b) رو بلاک کرده، نباید وارد stateِ نوشتنِ پاسخ بشه."""
+    a = await make_user()
+    b = await make_user()
+    note_id = await rc.create_note(a.id)
+    await db.block_sender(a.id, b.id)
+
+    update = _make_callback_update(b.id)
+    update.callback_query.data = f"noterep:{note_id}"
+
+    try:
+        await anon_note.handle_reply_button(update, MagicMock())
+
+        text = update.callback_query.message.reply_text.await_args.args[0]
+        assert "بلاک" in text
+        assert await rc.pop_awaiting_reply(b.id) is None  # وارد state پاسخ نشده
+    finally:
+        await _cleanup_block(a.id)
+
+
+async def test_reply_button_not_blocked_shows_write_prompt(make_user):
+    a = await make_user()
+    b = await make_user()
+    note_id = await rc.create_note(a.id)
+
+    update = _make_callback_update(b.id)
+    update.callback_query.data = f"noterep:{note_id}"
+
+    await anon_note.handle_reply_button(update, MagicMock())
+
+    text = update.callback_query.message.reply_text.await_args.args[0]
+    assert "پاسخت رو بنویس" in text
+    assert await rc.pop_awaiting_reply(b.id) == note_id

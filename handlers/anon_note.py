@@ -181,7 +181,10 @@ async def handle_direct_msg_button(update: Update, context: ContextTypes.DEFAULT
 
 
 async def handle_reply_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """هندلر دکمه‌ی «↩️ پاسخ دادن» زیر یک پیامِ نوتیفی."""
+    """هندلر دکمه‌ی «↩️ پاسخ دادن» زیر یک پیامِ نوتیفی. چکِ بلاک همینجا
+    (قبل از نمایشِ «پاسخت رو بنویس») انجام می‌شه، نه فقط لحظه‌ی ارسالِ
+    واقعیِ پاسخ (handle_pending_reply_input) — وگرنه کسی که طرفِ مقابل
+    بلاکش کرده، الکی دعوت به نوشتنِ پاسخ می‌شه."""
     from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
     query = update.callback_query
@@ -195,6 +198,11 @@ async def handle_reply_button(update: Update, context: ContextTypes.DEFAULT_TYPE
         return
 
     owner_id = query.from_user.id
+
+    if await is_sender_blocked(sender_id, owner_id):
+        await query.message.reply_text("🚫 طرفِ مقابل بلاکت کرده و نمی‌تونی براش پیام بفرستی.")
+        return
+
     await rc.set_awaiting_reply(owner_id, note_id)
 
     cancel_keyboard = InlineKeyboardMarkup(
