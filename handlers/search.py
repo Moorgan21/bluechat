@@ -13,13 +13,18 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-"""هندلرهای «جستجوی کاربران»: matching هدفمند با فیلترِ جنسیت/سن، برخلافِ
-matching کاملاً تصادفیِ chat.py.
+"""هندلرهای «جستجوی کاربران»: matching هدفمند با فیلترِ جنسیت/سن/استان/
+شهر، برخلافِ matching کاملاً تصادفیِ chat.py.
 
 فیلترها توی context.user_data می‌مونن (per-session، برای این مقیاس
 کافیه). matching هنوز از صفِ Redis استفاده می‌کنه، فقط قبل از جفت‌کردن
 پروفایلِ کاندیدا از Postgres چک می‌شه.
-"""
+
+فیلترِ شهر بدونِ فیلترِ استان معنی نداره (کدوم استانِ اون شهر؟)، پس
+دکمه‌ی «فیلتر بر اساسِ شهر» تا وقتی استان انتخاب نشده باشه فعال نمی‌شه؛
+انتخابِ استانِ جدید هم خودکار فیلترِ شهرِ استانِ قبلی رو پاک می‌کنه.
+انتخابِ استان بدونِ شهر مشکلی نداره — جستجو فقط بر اساسِ استان انجام
+می‌شه."""
 
 from sqlalchemy import select
 from telegram import Update
@@ -28,20 +33,24 @@ from telegram.ext import ContextTypes
 import redis_client as rc
 from db import Gender, User, async_session, deduct_coins, get_or_create_user
 from handlers.chat import check_room_conflict, try_match
-from keyboards import search_users_keyboard
+from keyboards import search_city_keyboard, search_province_keyboard, search_users_keyboard
 
-FILTERS_KEY = "search_filters"  # {"gender": "male"|"female"|None, "min_age":..,"max_age":..}
+FILTERS_KEY = "search_filters"  # {"gender": "male"|"female"|None, "min_age":.., "max_age":.., "province":.., "city":..}
 
 
 async def show_search_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     filters_ = context.user_data.get(FILTERS_KEY, {})
     gender_label = {"male": "مرد", "female": "زن", None: "بدون فیلتر"}.get(filters_.get("gender"))
     age_range = filters_.get("age_range", "بدون فیلتر")
+    province_label = filters_.get("province") or "بدون فیلتر"
+    city_label = filters_.get("city") or "بدون فیلتر"
 
     text = (
         "🔮 جستجوی هدفمند کاربران\n\n"
         f"فیلتر جنسیت: {gender_label}\n"
-        f"فیلتر سن: {age_range}\n\n"
+        f"فیلتر سن: {age_range}\n"
+        f"فیلتر استان: {province_label}\n"
+        f"فیلتر شهر: {city_label}\n\n"
         "می‌تونی فیلترها رو تنظیم کنی و بعد جستجو رو شروع کنی."
     )
     if update.callback_query:
@@ -76,6 +85,22 @@ async def search_callback_router(update: Update, context: ContextTypes.DEFAULT_T
             "بازه‌ی سنی رو به فرمت «حداقل-حداکثر» بفرست (مثلاً 20-30):"
         )
 
+    elif action == "filter_province":
+        await query.edit_message_text("استان مدنظرت رو انتخاب کن:", reply_markup=search_province_keyboard())
+
+    elif action == "filter_city":
+        # شهر بدونِ استان معنی نداره (کدومِ استان؟)، پس قبلش باید استان
+        # انتخاب شده باشه؛ وگرنه صراحتاً می‌گیم اول استان رو انتخاب کن.
+        filters_ = context.user_data.get(FILTERS_KEY, {})
+        province = filters_.get("province")
+        if not province:
+            await query.edit_message_text(
+                "⚠️ اول باید یه استان انتخاب کنی؛ بعدش می‌تونی فیلترِ شهر رو هم بزنی.",
+                reply_markup=search_users_keyboard(),
+            )
+            return
+        await query.edit_message_text("شهر مدنظرت رو انتخاب کن:", reply_markup=search_city_keyboard(province))
+
     elif action == "go":
         await run_search(update, context)
 
@@ -89,6 +114,44 @@ async def search_gender_callback_router(update: Update, context: ContextTypes.DE
     filters_["gender"] = None if value == "none" else value
 
     await show_search_menu(update, context)
+
+
+async def search_province_callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    await query.answer()
+    value = query.data.split(":", 1)[1]
+
+    filters_ = context.user_data.setdefault(FILTERS_KEY, {})
+    if value == "none":
+        filters_.pop("province", None)
+        filters_.pop("city", None)
+    else:
+        filters_["province"] = value
+        # تغییرِ استان یعنی فیلترِ شهرِ استانِ قبلی (اگه بوده) دیگه معتبر نیست
+        filters_.pop("city", None)
+
+    await show_search_menu(update, context)
+
+
+async def search_city_callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    await query.answer()
+    value = query.data.split(":", 1)[1]
+
+    filters_ = context.user_data.setdefault(FILTERS_KEY, {})
+    if value == "none":
+        filters_.pop("city", None)
+    else:
+        filters_["city"] = value
+
+    await show_search_menu(update, context)
+
+
+async def search_city_page_callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    await query.answer()
+    _, province, page_str = query.data.split(":", 2)
+    await query.edit_message_reply_markup(reply_markup=search_city_keyboard(province, int(page_str)))
 
 
 async def handle_search_age_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
@@ -163,13 +226,17 @@ async def run_search(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         candidate_ids.extend(int(m) for m in members if int(m) != user_id)
 
     matched_id = None
-    if candidate_ids and (filters_.get("gender") or filters_.get("min_age")):
+    if candidate_ids and (filters_.get("gender") or filters_.get("min_age") or filters_.get("province")):
         async with async_session() as session:
             stmt = select(User).where(User.id.in_(candidate_ids))
             if filters_.get("gender"):
                 stmt = stmt.where(User.gender == Gender(filters_["gender"]))
             if filters_.get("min_age") and filters_.get("max_age"):
                 stmt = stmt.where(User.age >= filters_["min_age"], User.age <= filters_["max_age"])
+            if filters_.get("province"):
+                stmt = stmt.where(User.province == filters_["province"])
+            if filters_.get("city"):
+                stmt = stmt.where(User.city == filters_["city"])
             result = await session.execute(stmt)
             matches = result.scalars().all()
             if matches:

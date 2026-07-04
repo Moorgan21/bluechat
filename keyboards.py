@@ -299,10 +299,58 @@ def search_users_keyboard() -> InlineKeyboardMarkup:
         [
             [InlineKeyboardButton("⚧ فیلتر بر اساس جنسیت", callback_data="search:filter_gender")],
             [InlineKeyboardButton("🎂 فیلتر بر اساس سن", callback_data="search:filter_age")],
+            [InlineKeyboardButton("🗺 فیلتر بر اساس استان", callback_data="search:filter_province")],
+            [InlineKeyboardButton("🏙 فیلتر بر اساس شهر", callback_data="search:filter_city")],
             [InlineKeyboardButton("🔍 شروع جستجو", callback_data="search:go")],
             [InlineKeyboardButton("🔙 بازگشت به منو", callback_data="menu:main")],
         ]
     )
+
+
+def search_province_keyboard() -> InlineKeyboardMarkup:
+    """کیبوردِ فیلترِ استانِ جستجوی هدفمند؛ عمداً از province_keyboard
+    (که استانِ خودِ کاربر رو تو پروفایل عوض می‌کنه) جداست، چون
+    callback_dataش باید فیلترِ جستجو رو ست کنه، نه پروفایلِ کاربر رو."""
+    rows = []
+    for i in range(0, len(_PROVINCES), 3):
+        row = [
+            InlineKeyboardButton(p, callback_data=f"searchprov:{p}")
+            for p in _PROVINCES[i:i + 3]
+        ]
+        rows.append(row)
+    rows.append([InlineKeyboardButton("❌ حذفِ فیلترِ استان/شهر", callback_data="searchprov:none")])
+    rows.append([InlineKeyboardButton("🔙 بازگشت", callback_data="menu:search")])
+    return InlineKeyboardMarkup(rows)
+
+
+def search_city_keyboard(province: str, page: int = 0) -> InlineKeyboardMarkup:
+    """کیبوردِ فیلترِ شهر برای جستجوی هدفمند، مشابهِ city_keyboard ولی با
+    callback_dataِ مخصوصِ فیلترِ جستجو."""
+    cities = IRAN_CITIES.get(province, [])
+    total = len(cities)
+    start = page * _CITIES_PER_PAGE
+    end = min(start + _CITIES_PER_PAGE, total)
+    page_cities = cities[start:end]
+
+    rows = []
+    for i in range(0, len(page_cities), 3):
+        row = [
+            InlineKeyboardButton(c, callback_data=f"searchcity:{c}")
+            for c in page_cities[i:i + 3]
+        ]
+        rows.append(row)
+
+    nav = []
+    if page > 0:
+        nav.append(InlineKeyboardButton("→ قبلی", callback_data=f"searchcitypg:{province}:{page - 1}"))
+    if end < total:
+        nav.append(InlineKeyboardButton("بعدی ←", callback_data=f"searchcitypg:{province}:{page + 1}"))
+    if nav:
+        rows.append(nav)
+
+    rows.append([InlineKeyboardButton("❌ حذفِ فیلترِ شهر", callback_data="searchcity:none")])
+    rows.append([InlineKeyboardButton("🔙 بازگشت", callback_data="menu:search")])
+    return InlineKeyboardMarkup(rows)
 
 
 def nearby_keyboard(has_location: bool) -> InlineKeyboardMarkup:

@@ -437,6 +437,12 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         await search.search_callback_router(update, context)
     elif data.startswith("searchgender:"):
         await search.search_gender_callback_router(update, context)
+    elif data.startswith("searchcitypg:"):
+        await search.search_city_page_callback_router(update, context)
+    elif data.startswith("searchcity:"):
+        await search.search_city_callback_router(update, context)
+    elif data.startswith("searchprov:"):
+        await search.search_province_callback_router(update, context)
     elif data.startswith("nearby:"):
         await nearby_callback_router(update, context, data)
     elif data.startswith("coins:history"):
