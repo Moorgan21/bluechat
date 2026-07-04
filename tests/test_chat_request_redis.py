@@ -87,3 +87,34 @@ async def test_chat_request_ttl_is_set():
     ttl = await rc.r.ttl(rc.KEY_CHAT_REQUEST.format(request_id=request_id))
 
     assert 0 < ttl <= rc.TTL_CHAT_REQUEST
+
+
+async def test_count_active_chat_requests_tracks_creation_and_clear():
+    assert await rc.count_active_chat_requests(999) == 0
+
+    id_a = await rc.create_chat_request(requester_id=999, target_id=1)
+    id_b = await rc.create_chat_request(requester_id=999, target_id=2)
+    assert await rc.count_active_chat_requests(999) == 2
+
+    await rc.clear_chat_request(id_a)
+    assert await rc.count_active_chat_requests(999) == 1
+
+    await rc.clear_chat_request(id_b)
+    assert await rc.count_active_chat_requests(999) == 0
+
+
+async def test_count_active_chat_requests_decreases_on_expiry():
+    request_id = await rc.create_chat_request(requester_id=888, target_id=1)
+    await rc.r.zadd(rc.KEY_CHAT_REQUEST_PENDING, {request_id: time.time() - 400})
+
+    assert await rc.count_active_chat_requests(888) == 1
+    await rc.pop_expired_chat_requests(timeout_seconds=300)
+    assert await rc.count_active_chat_requests(888) == 0
+
+
+async def test_count_active_chat_requests_only_counts_that_requester():
+    await rc.create_chat_request(requester_id=1, target_id=2)
+    await rc.create_chat_request(requester_id=2, target_id=1)
+
+    assert await rc.count_active_chat_requests(1) == 1
+    assert await rc.count_active_chat_requests(2) == 1

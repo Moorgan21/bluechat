@@ -156,3 +156,55 @@ async def test_accept_succeeds_after_requester_left_the_queue(make_user):
     assert await rc.get_partner(requester.id) == acceptor.id
 
     await rc.clear_partner(acceptor.id)
+
+
+async def test_sixth_active_request_is_blocked(make_user):
+    requester = await make_user(coins=20)
+    targets = [await make_user(coins=10) for _ in range(6)]
+
+    for t in targets[:5]:
+        update = _make_send_request_update(requester.id, t.id)
+        context = MagicMock()
+        context.bot.send_message = AsyncMock()
+        await public_profile.handle_chat_request_button(update, context)
+
+    assert await rc.count_active_chat_requests(requester.id) == 5
+
+    sixth_update = _make_send_request_update(requester.id, targets[5].id)
+    context = MagicMock()
+    context.bot.send_message = AsyncMock()
+    await public_profile.handle_chat_request_button(sixth_update, context)
+
+    text = sixth_update.callback_query.message.reply_text.await_args.args[0]
+    assert "۵ درخواستِ چتِ فعال" in text
+    context.bot.send_message.assert_not_awaited()  # درخواستِ ششم اصلاً ساخته نشد
+
+    async with db.async_session() as session:
+        refreshed = await session.get(db.User, requester.id)
+        assert refreshed.coins == 20 - 5 * rc.CHAT_COIN_COST  # فقط بابتِ ۵تای اول کسر شده
+
+
+async def test_sending_allowed_again_after_one_active_request_resolves(make_user):
+    requester = await make_user(coins=20)
+    targets = [await make_user(coins=10) for _ in range(6)]
+
+    for t in targets[:5]:
+        update = _make_send_request_update(requester.id, t.id)
+        context = MagicMock()
+        context.bot.send_message = AsyncMock()
+        await public_profile.handle_chat_request_button(update, context)
+
+    # به‌جای استخراجِ request_id از داخلِ هندلر، مستقیم یکی رو رد می‌کنیم
+    active_ids = await rc.r.smembers(rc.KEY_CHAT_REQUEST_BY_REQUESTER.format(requester_id=requester.id))
+    await rc.clear_chat_request(next(iter(active_ids)))
+
+    assert await rc.count_active_chat_requests(requester.id) == 4
+
+    sixth_update = _make_send_request_update(requester.id, targets[5].id)
+    context = MagicMock()
+    context.bot.send_message = AsyncMock()
+    await public_profile.handle_chat_request_button(sixth_update, context)
+
+    confirm_text = sixth_update.callback_query.message.reply_text.await_args.args[0]
+    assert "درخواستِ چتت ارسال شد" in confirm_text
+    assert await rc.count_active_chat_requests(requester.id) == 5

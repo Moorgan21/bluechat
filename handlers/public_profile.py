@@ -30,7 +30,10 @@
 منتظرِ صف) باشن هم آزادِ اتاقِ چت (نه عضو نه منتظرِ صف)، وگرنه درخواست
 لغو می‌شه — این چک لحظه‌ی accept انجام می‌شه، نه لحظه‌ی ارسالِ درخواست،
 پس اگه A بینِ این فاصله وارد یه چت/اتاق شده باشه دیگه قابلِ قبول نیست،
-و برعکس اگه قبلاً درگیر بوده ولی الان آزاد شده، قابلِ قبوله.
+و برعکس اگه قبلاً درگیر بوده ولی الان آزاد شده، قابلِ قبوله. هر کاربر
+هم‌زمان حداکثر rc.MAX_ACTIVE_CHAT_REQUESTS_PER_USER (۵) درخواستِ
+بی‌پاسخ می‌تونه داشته باشه؛ برای فرستادنِ درخواستِ جدید باید صبر کنه
+یکی‌شون قبول/رد بشه یا منقضی بشه.
 
 برای واکنش، هر کاربر تو تنظیماتِ پروفایلِ خودش می‌تونه دریافتِ واکنش رو
 روشن/خاموش کنه و تگ‌های سفارشی (مثلِ #عصبانی) بسازه. اگه روشن باشه،
@@ -204,6 +207,14 @@ async def handle_chat_request_button(update: Update, context: ContextTypes.DEFAU
 
     if target_id == requester_id:
         await query.message.reply_text("نمی‌تونی برای خودت درخواستِ چت بفرستی 🙂")
+        return
+
+    active_requests = await rc.count_active_chat_requests(requester_id)
+    if active_requests >= rc.MAX_ACTIVE_CHAT_REQUESTS_PER_USER:
+        await query.message.reply_text(
+            f"⚠️ همین الان {_to_fa(rc.MAX_ACTIVE_CHAT_REQUESTS_PER_USER)} درخواستِ چتِ فعال داری. "
+            "صبر کن قبول بشن یا منقضی بشن (حداکثر ۵ دقیقه)، بعد می‌تونی دوباره درخواست بفرستی."
+        )
         return
 
     if await rc.get_partner(requester_id) is not None:

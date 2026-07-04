@@ -597,8 +597,10 @@ async def pop_message_report_context(token: str) -> Optional[dict]:
 # فاش نشه تا وقتی خودِ B بخواد.
 KEY_CHAT_REQUEST = "bluechat:chatreq:{request_id}"  # request_id -> {"requester_id":, "target_id":} (JSON)
 KEY_CHAT_REQUEST_PENDING = "bluechat:chatreq_pending"  # ZSET: request_id -> timestampِ ایجاد (برای لغوِ خودکار)
+KEY_CHAT_REQUEST_BY_REQUESTER = "bluechat:chatreq_by_requester:{requester_id}"  # SET: request_idهای فعالِ این requester
 TTL_CHAT_REQUEST = 60 * 60 * 24  # یک روز اعتبار برای یک درخواستِ چت (سقفِ ایمنی؛ خودِ job زودتر لغوش می‌کنه)
 CHAT_REQUEST_TIMEOUT_SECONDS = 60 * 5  # ۵ دقیقه مهلت قبل از لغوِ خودکار و بازگشتِ سکه
+MAX_ACTIVE_CHAT_REQUESTS_PER_USER = 5  # هر کاربر حداکثر همزمان همین‌قدر درخواستِ چتِ بی‌پاسخ می‌تونه داشته باشه
 
 
 async def create_chat_request(requester_id: int, target_id: int) -> str:
@@ -609,6 +611,9 @@ async def create_chat_request(requester_id: int, target_id: int) -> str:
     payload = json.dumps({"requester_id": requester_id, "target_id": target_id})
     await r.set(KEY_CHAT_REQUEST.format(request_id=request_id), payload, ex=TTL_CHAT_REQUEST)
     await r.zadd(KEY_CHAT_REQUEST_PENDING, {request_id: time.time()})
+    by_requester_key = KEY_CHAT_REQUEST_BY_REQUESTER.format(requester_id=requester_id)
+    await r.sadd(by_requester_key, request_id)
+    await r.expire(by_requester_key, TTL_CHAT_REQUEST)
     return request_id
 
 
@@ -628,9 +633,19 @@ async def get_chat_request(request_id: str) -> Optional[dict]:
     return {"requester_id": int(data["requester_id"]), "target_id": int(data["target_id"])}
 
 
+async def count_active_chat_requests(requester_id: int) -> int:
+    """چندتا درخواستِ چتِ بی‌پاسخِ فعلیِ این requester هنوز باز مونده؛
+    handle_chat_request_button قبل از ساختِ درخواستِ جدید این رو با
+    MAX_ACTIVE_CHAT_REQUESTS_PER_USER مقایسه می‌کنه."""
+    return await r.scard(KEY_CHAT_REQUEST_BY_REQUESTER.format(requester_id=requester_id))
+
+
 async def clear_chat_request(request_id: str) -> None:
+    data = await get_chat_request(request_id)
     await r.delete(KEY_CHAT_REQUEST.format(request_id=request_id))
     await r.zrem(KEY_CHAT_REQUEST_PENDING, request_id)
+    if data is not None:
+        await r.srem(KEY_CHAT_REQUEST_BY_REQUESTER.format(requester_id=data["requester_id"]), request_id)
 
 
 async def pop_expired_chat_requests(timeout_seconds: int = CHAT_REQUEST_TIMEOUT_SECONDS) -> list[dict]:
@@ -650,6 +665,7 @@ async def pop_expired_chat_requests(timeout_seconds: int = CHAT_REQUEST_TIMEOUT_
         await r.delete(KEY_CHAT_REQUEST.format(request_id=request_id))
         await r.zrem(KEY_CHAT_REQUEST_PENDING, request_id)
         if data is not None:
+            await r.srem(KEY_CHAT_REQUEST_BY_REQUESTER.format(requester_id=data["requester_id"]), request_id)
             results.append({"request_id": request_id, **data})
     return results
 
