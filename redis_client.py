@@ -598,7 +598,7 @@ async def pop_message_report_context(token: str) -> Optional[dict]:
 KEY_CHAT_REQUEST = "bluechat:chatreq:{request_id}"  # request_id -> {"requester_id":, "target_id":} (JSON)
 KEY_CHAT_REQUEST_PENDING = "bluechat:chatreq_pending"  # ZSET: request_id -> timestampِ ایجاد (برای لغوِ خودکار)
 TTL_CHAT_REQUEST = 60 * 60 * 24  # یک روز اعتبار برای یک درخواستِ چت (سقفِ ایمنی؛ خودِ job زودتر لغوش می‌کنه)
-CHAT_REQUEST_TIMEOUT_SECONDS = 120  # ۲ دقیقه مهلت قبل از لغوِ خودکار و بازگشتِ سکه
+CHAT_REQUEST_TIMEOUT_SECONDS = 60 * 5  # ۵ دقیقه مهلت قبل از لغوِ خودکار و بازگشتِ سکه
 
 
 async def create_chat_request(requester_id: int, target_id: int) -> str:

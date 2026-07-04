@@ -562,7 +562,7 @@ async def _active_room_mirror_sync_job(context: ContextTypes.DEFAULT_TYPE) -> No
 
 
 async def _expire_chat_requests_job(context: ContextTypes.DEFAULT_TYPE) -> None:
-    """هر ۳۰ ثانیه: درخواست‌های چتی که بیشتر از ۲ دقیقه بدونِ پاسخ (نه
+    """هر ۳۰ ثانیه: درخواست‌های چتی که بیشتر از ۵ دقیقه بدونِ پاسخ (نه
     قبول نه رد) موندن رو خودکار لغو می‌کنه، سکه‌ی هزینه‌شده رو به
     درخواست‌کننده برمی‌گردونه، و بهش اطلاع می‌ده."""
     expired = await rc.pop_expired_chat_requests()

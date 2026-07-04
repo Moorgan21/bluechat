@@ -22,9 +22,15 @@
 بدونِ اینکه هویتِ A افشا بشه. وقتی B روی «مشاهده» بزنه، پروفایلِ کاملِ A
 با دکمه‌های قبول/رد نشونش داده می‌شه و A هم خبردار می‌شه که دیده شده.
 قبول‌کردن یه چتِ دوطرفه‌ی کامل باز می‌کنه (سکه برنمی‌گرده، چون چت واقعاً
-برقرار شده)؛ رد‌کردن سکه رو به A برمی‌گردونه. اگه B تا ۲ دقیقه
+برقرار شده)؛ رد‌کردن سکه رو به A برمی‌گردونه. اگه B تا ۵ دقیقه
 (rc.CHAT_REQUEST_TIMEOUT_SECONDS) نه قبول کنه نه رد، یه jobِ پس‌زمینه
 (main.py:_expire_chat_requests_job) خودش لغوش می‌کنه و سکه به A برمی‌گرده.
+دکمه‌های مشاهده/قبول/رد هم بعدِ همین ۵ دقیقه دیگه کار نمی‌کنن. علاوه بر
+این، چه A چه B، لحظه‌ی قبول‌شدن باید هم آزادِ چتِ ۱به۱ (نه جفت‌شده نه
+منتظرِ صف) باشن هم آزادِ اتاقِ چت (نه عضو نه منتظرِ صف)، وگرنه درخواست
+لغو می‌شه — این چک لحظه‌ی accept انجام می‌شه، نه لحظه‌ی ارسالِ درخواست،
+پس اگه A بینِ این فاصله وارد یه چت/اتاق شده باشه دیگه قابلِ قبول نیست،
+و برعکس اگه قبلاً درگیر بوده ولی الان آزاد شده، قابلِ قبوله.
 
 برای واکنش، هر کاربر تو تنظیماتِ پروفایلِ خودش می‌تونه دریافتِ واکنش رو
 روشن/خاموش کنه و تگ‌های سفارشی (مثلِ #عصبانی) بسازه. اگه روشن باشه،
@@ -241,12 +247,13 @@ async def handle_chat_request_button(update: Update, context: ContextTypes.DEFAU
 
     request_id = await rc.create_chat_request(requester_id, target_id)
 
-    await query.message.reply_text("✅ درخواستِ چتت ارسال شد.")
+    await query.message.reply_text("✅ درخواستِ چتت ارسال شد و تا ۵ دقیقه معتبره.")
 
     try:
         await context.bot.send_message(
             target_id,
-            "🔔 یه درخواستِ چت داری. برای مشاهده روی دکمه‌ی زیر بزن:",
+            "🔔 یه درخواستِ چت داری. برای مشاهده روی دکمه‌ی زیر بزن:\n"
+            "⏳ این درخواست فقط تا ۵ دقیقه معتبره.",
             reply_markup=view_chat_request_keyboard(request_id),
         )
     except TelegramError:
@@ -337,9 +344,18 @@ async def handle_chat_request_accept(update: Update, context: ContextTypes.DEFAU
 
     requester_id = request_data["requester_id"]
 
-    if await rc.get_partner(acceptor_id) is not None or await rc.get_partner(requester_id) is not None:
+    # هم چتِ ۱به۱ِ جفت‌شده (get_partner) هم صفِ انتظارِ matchingِ تصادفی
+    # (is_waiting) باید چک بشن؛ وگرنه کسی که همین الان منتظرِ پیدا شدنِ
+    # یه همراهِ تصادفیه می‌تونست هم‌زمان از طریقِ این درخواست هم جفت
+    # بشه و با دو نفر همزمان درگیر بمونه.
+    if (
+        await rc.get_partner(acceptor_id) is not None
+        or await rc.get_partner(requester_id) is not None
+        or await rc.is_waiting(acceptor_id)
+        or await rc.is_waiting(requester_id)
+    ):
         await _edit_decision_message(
-            query, "یکی از دو طرف الان توی گفتگوی دیگه‌ای هست، پس این درخواست قابلِ قبول نیست."
+            query, "یکی از دو طرف الان توی گفتگوی دیگه‌ای هست یا منتظرِ صفِ چتِ تصادفیه، پس این درخواست قابلِ قبول نیست."
         )
         await rc.clear_chat_request(request_id)
         return
