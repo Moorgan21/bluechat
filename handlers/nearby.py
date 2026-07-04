@@ -32,8 +32,15 @@ from telegram.ext import ContextTypes
 from db import User, async_session, get_or_create_user, make_point
 from keyboards import main_reply_keyboard, nearby_keyboard
 
+_FA_DIGITS = str.maketrans("0123456789", "۰۱۲۳۴۵۶۷۸۹")
+
+
+def _to_fa(n: int) -> str:
+    return str(n).translate(_FA_DIGITS)
+
+
 LOCATION_MAX_AGE_DAYS = 30  # موقعیت‌های قدیمی‌تر از این، در جستجو نادیده گرفته می‌شن
-NEARBY_RADIUS_METERS = 50_000  # شعاع ۵۰ کیلومتر
+DEFAULT_NEARBY_RADIUS_KM = 50  # شعاعِ پیش‌فرض وقتی کاربر هنوز فیلترِ شعاعی انتخاب نکرده (مثلاً بلافاصله بعدِ اشتراک‌گذاریِ موقعیت)
 NEARBY_RESULT_LIMIT = 10
 
 
@@ -48,7 +55,9 @@ async def show_nearby_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         "برای استفاده از این بخش باید موقعیت مکانی‌ت رو (فقط برای پیدا کردن "
         "افراد اطراف، نه نمایش آدرس دقیق) به اشتراک بذاری.\n"
         "موقعیت تو هیچ‌وقت به کاربر دیگه‌ای مستقیماً نشون داده نمی‌شه؛ فقط فاصله‌ی "
-        "تقریبی محاسبه می‌شه."
+        "تقریبی محاسبه می‌شه.\n\n"
+        "بعد از اشتراک‌گذاری، می‌تونی محدوده‌ی جستجو رو انتخاب کنی: ۵، ۱۰، ۲۰ یا ۵۰ "
+        "کیلومتری، یا «نزدیک‌ترین آدم ممکن» (بدونِ محدودیتِ فاصله)."
     )
     if update.callback_query:
         await update.callback_query.edit_message_text(text, reply_markup=nearby_keyboard(has_location))
@@ -100,7 +109,13 @@ async def delete_location(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     await query.edit_message_text("موقعیت تو حذف شد.", reply_markup=nearby_keyboard(has_location=False))
 
 
-async def show_nearby_users(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def show_nearby_users(
+    update: Update, context: ContextTypes.DEFAULT_TYPE, radius_km: int | None = DEFAULT_NEARBY_RADIUS_KM
+) -> None:
+    """radius_km=None یعنی «نزدیک‌ترین آدمِ ممکن»: بدونِ هیچ محدودیتِ
+    شعاعی، فقط تک‌نفرِ واقعاً نزدیک‌تر از همه (حتی اگه خیلی دور باشه).
+    وگرنه توی همون شعاعِ مشخص‌شده (کیلومتر) تا NEARBY_RESULT_LIMIT نفر
+    برمی‌گردونه."""
     telegram_user = update.effective_user
     cutoff = datetime.utcnow() - timedelta(days=LOCATION_MAX_AGE_DAYS)
 
@@ -116,25 +131,33 @@ async def show_nearby_users(update: Update, context: ContextTypes.DEFAULT_TYPE) 
             return
 
         distance_col = ST_Distance(User.location, me.location).label("distance_m")
+        conditions = [
+            User.id != me.id,
+            User.is_banned.is_(False),
+            User.location.isnot(None),
+            User.location_updated_at >= cutoff,
+        ]
+        if radius_km is not None:
+            conditions.append(ST_DWithin(User.location, me.location, radius_km * 1000))
+
         stmt = (
             select(User, distance_col)
-            .where(
-                User.id != me.id,
-                User.is_banned.is_(False),
-                User.location.isnot(None),
-                User.location_updated_at >= cutoff,
-                ST_DWithin(User.location, me.location, NEARBY_RADIUS_METERS),
-            )
+            .where(*conditions)
             .order_by(distance_col.asc())
-            .limit(NEARBY_RESULT_LIMIT)
+            .limit(1 if radius_km is None else NEARBY_RESULT_LIMIT)
         )
         result = await session.execute(stmt)
         nearby = result.all()  # list of (User, distance_m)
 
     if not nearby:
-        text = "فعلاً کسی توی ۵۰ کیلومتری‌ت پیدا نشد. بعداً دوباره امتحان کن."
+        area_label = "این حوالی" if radius_km is None else f"{_to_fa(radius_km)} کیلومتری‌ت"
+        text = f"فعلاً کسی توی {area_label} پیدا نشد. بعداً دوباره امتحان کن."
+    elif radius_km is None:
+        candidate, distance_m = nearby[0]
+        name = candidate.display_name or "کاربر ناشناس"
+        text = f"🎯 نزدیک‌ترین کاربرِ ممکن به تو:\n\n• {name} — تقریباً {distance_m / 1000:.1f} کیلومتر"
     else:
-        lines = ["📍 نزدیک‌ترین کاربران به تو:\n"]
+        lines = [f"📍 کاربرانِ توی {_to_fa(radius_km)} کیلومتری‌ت:\n"]
         for candidate, distance_m in nearby:
             name = candidate.display_name or "کاربر ناشناس"
             lines.append(f"• {name} — تقریباً {distance_m / 1000:.1f} کیلومتر")

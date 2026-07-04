@@ -516,7 +516,13 @@ async def nearby_callback_router(update: Update, context: ContextTypes.DEFAULT_T
     if action == "share_location":
         await nearby.request_location_share(update, context)
     elif action == "show":
+        # سازگاری با دکمه‌های قدیمی‌ای که ممکنه هنوز تو چتِ کاربر مونده
+        # باشن (قبل از تبدیل‌شدنِ این دکمه به فیلترهای شعاعیِ جدا)
         await nearby.show_nearby_users(update, context)
+    elif action.startswith("radius:"):
+        radius_str = action.split(":", 1)[1]
+        radius_km = None if radius_str == "closest" else int(radius_str)
+        await nearby.show_nearby_users(update, context, radius_km=radius_km)
     elif action == "update_location":
         await nearby.request_location_share(update, context)
     elif action == "delete_location":

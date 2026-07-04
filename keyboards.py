@@ -354,10 +354,25 @@ def search_city_keyboard(province: str, page: int = 0) -> InlineKeyboardMarkup:
 
 
 def nearby_keyboard(has_location: bool) -> InlineKeyboardMarkup:
+    """دکمه‌ی تکیِ «نمایش افراد نزدیک» جاش رو به چندتا دکمه‌ی فیلترِ شعاع
+    داده تا کاربر مستقیم انتخاب کنه توی چه محدوده‌ای بگرده، به‌جای
+    اینکه همیشه توی شعاعِ ثابتِ ۵۰ کیلومتر جستجو بشه."""
     rows = []
     if has_location:
         rows.append([InlineKeyboardButton("🔄 به‌روزرسانی موقعیت", callback_data="nearby:update_location")])
-        rows.append([InlineKeyboardButton("👀 نمایش افراد نزدیک", callback_data="nearby:show")])
+        rows.append(
+            [
+                InlineKeyboardButton("📏 ۵ کیلومتری", callback_data="nearby:radius:5"),
+                InlineKeyboardButton("📏 ۱۰ کیلومتری", callback_data="nearby:radius:10"),
+            ]
+        )
+        rows.append(
+            [
+                InlineKeyboardButton("📏 ۲۰ کیلومتری", callback_data="nearby:radius:20"),
+                InlineKeyboardButton("📏 ۵۰ کیلومتری", callback_data="nearby:radius:50"),
+            ]
+        )
+        rows.append([InlineKeyboardButton("🎯 نزدیک‌ترین آدم ممکن", callback_data="nearby:radius:closest")])
         rows.append([InlineKeyboardButton("🗑 حذف موقعیت من", callback_data="nearby:delete_location")])
     else:
         rows.append([InlineKeyboardButton("📍 اشتراک‌گذاری موقعیت", callback_data="nearby:share_location")])
