@@ -306,6 +306,23 @@ async def handle_view_chat_request(update: Update, context: ContextTypes.DEFAULT
         pass
 
 
+async def _edit_decision_message(query, text: str) -> None:
+    """پیامِ زیرِ دکمه‌های قبول/رد گاهی پیامِ متنیه، گاهی (اگه
+    درخواست‌کننده عکسِ پروفایل داشته باشه) پیامِ عکس‌دار با caption
+    (نگاه کن به handle_view_chat_request). زدنِ edit_message_text روی
+    یه پیامِ عکس‌دار با TelegramError fail می‌کنه (نه بی‌سروصدا رد
+    می‌شه)، و چون قبلاً هیچ‌جا catch نمی‌شد، کلِ هندلر همون‌جا می‌ترکید
+    و منطقِ اصلیِ بعدش (اطلاع‌رسانی به دو طرف، بازگشتِ سکه در ردِ
+    درخواست) اصلاً اجرا نمی‌شد."""
+    try:
+        if query.message.photo:
+            await query.edit_message_caption(caption=text)
+        else:
+            await query.edit_message_text(text)
+    except TelegramError:
+        logger.warning("امکانِ ویرایشِ پیامِ تصمیمِ درخواستِ چت وجود نداشت.")
+
+
 async def handle_chat_request_accept(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
     await query.answer()
@@ -315,14 +332,14 @@ async def handle_chat_request_accept(update: Update, context: ContextTypes.DEFAU
     acceptor_id = query.from_user.id
 
     if request_data is None:
-        await query.edit_message_text("⚠️ این درخواست دیگه معتبر نیست.")
+        await _edit_decision_message(query, "⚠️ این درخواست دیگه معتبر نیست.")
         return
 
     requester_id = request_data["requester_id"]
 
     if await rc.get_partner(acceptor_id) is not None or await rc.get_partner(requester_id) is not None:
-        await query.edit_message_text(
-            "یکی از دو طرف الان توی گفتگوی دیگه‌ای هست، پس این درخواست قابلِ قبول نیست."
+        await _edit_decision_message(
+            query, "یکی از دو طرف الان توی گفتگوی دیگه‌ای هست، پس این درخواست قابلِ قبول نیست."
         )
         await rc.clear_chat_request(request_id)
         return
@@ -330,8 +347,8 @@ async def handle_chat_request_accept(update: Update, context: ContextTypes.DEFAU
     if await check_room_conflict(acceptor_id) or await check_room_conflict(requester_id):
         # پیامِ دقیقِ اتاق/صف اهمیتی نداره؛ نکته‌ی مهم برای این دو نفر
         # همینه که یکی‌شون آزادِ چتِ ۱به۱ نیست، صرف‌نظر از اینکه کدومه.
-        await query.edit_message_text(
-            "یکی از دو طرف الان توی یه اتاقِ چتِ فعاله یا منتظرِ عضویتِ یه اتاقه، پس این درخواست قابلِ قبول نیست."
+        await _edit_decision_message(
+            query, "یکی از دو طرف الان توی یه اتاقِ چتِ فعاله یا منتظرِ عضویتِ یه اتاقه، پس این درخواست قابلِ قبول نیست."
         )
         await rc.clear_chat_request(request_id)
         return
@@ -350,7 +367,7 @@ async def handle_chat_request_accept(update: Update, context: ContextTypes.DEFAU
 
     await increment_total_chats([acceptor_id, requester_id])
 
-    await query.edit_message_text("✅ درخواست قبول شد. گفتگو شروع شد.")
+    await _edit_decision_message(query, "✅ درخواست قبول شد. گفتگو شروع شد.")
     try:
         await context.bot.send_message(
             acceptor_id,
@@ -378,7 +395,7 @@ async def handle_chat_request_reject(update: Update, context: ContextTypes.DEFAU
     rejector_id = query.from_user.id
 
     await rc.clear_chat_request(request_id)
-    await query.edit_message_text("❌ درخواست رد شد.")
+    await _edit_decision_message(query, "❌ درخواست رد شد.")
 
     if request_data is not None:
         requester_id = request_data["requester_id"]

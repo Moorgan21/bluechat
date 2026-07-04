@@ -411,6 +411,7 @@ async def test_chat_request_accept_blocked_when_acceptor_in_room(make_user):
     query.data = f"chataccept:{request_id}"
     query.from_user.id = member.id
     query.answer = AsyncMock()
+    query.message.photo = None  # پیامِ متنیِ ساده، نه پیامِ عکس‌دار
     query.edit_message_text = AsyncMock()
     update = MagicMock()
     update.callback_query = query
