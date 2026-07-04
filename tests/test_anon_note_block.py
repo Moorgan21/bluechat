@@ -1,7 +1,8 @@
 """تست‌های واحد برای این باگ: بلاک‌کردنِ فرستنده در پیام‌های ناشناس باید
 هم جلوی پیامِ ناشناسِ جدید رو بگیره هم جلوی زنجیره‌ی پاسخ‌ها
 (handle_pending_reply_input) رو، وگرنه طرفِ بلاک‌شده می‌تونه از طریقِ
-دکمه‌ی «↩️ پاسخ دادن» دوباره برای صاحبِ لینک پیام بفرسته."""
+دکمه‌ی «↩️ پاسخ دادن» دوباره برای صاحبِ لینک پیام بفرسته. فرستنده‌ی
+بلاک‌شده باید صراحتاً باخبر بشه (نه یه موفقیتِ ساختگی)."""
 
 from unittest.mock import AsyncMock, MagicMock
 
@@ -36,7 +37,7 @@ async def _cleanup_block(owner_id: int) -> None:
         await session.commit()
 
 
-async def test_send_anon_note_blocked_sender_is_silently_dropped(make_user):
+async def test_send_anon_note_blocked_sender_gets_explicit_notice(make_user):
     sender = await make_user()
     owner = await make_user()
     await db.block_sender(owner.id, sender.id)
@@ -45,7 +46,8 @@ async def test_send_anon_note_blocked_sender_is_silently_dropped(make_user):
     try:
         await anon_note.send_anon_note(owner.id, sender.id, update, context)
 
-        update.message.reply_text.assert_awaited_with("✅ پیامت ارسال شد.")
+        text = update.message.reply_text.await_args.args[0]
+        assert "بلاک" in text
         context.bot.send_message.assert_not_awaited()  # owner هیچ نوتیفی نمی‌گیره
     finally:
         await _cleanup_block(owner.id)
@@ -68,7 +70,8 @@ async def test_reply_chain_blocks_previously_blocked_sender(make_user):
 
         assert consumed is True
         context.bot.copy_message.assert_not_awaited()
-        update.message.reply_text.assert_awaited_with("✅ پاسخت ارسال شد.")
+        text = update.message.reply_text.await_args.args[0]
+        assert "بلاک" in text
     finally:
         await _cleanup_block(b.id)
 
