@@ -52,7 +52,7 @@ from telegram.ext import (
 import redis_client as rc
 import metrics
 import spam_guard
-from db import init_db, get_or_create_user, async_session, is_user_banned, refund_coins
+from db import init_db, get_or_create_user, async_session, is_sender_blocked, is_user_banned, refund_coins
 from handlers import anon_note, chat, chatroom, coins, menu, nearby, profile, public_profile, report, search, settings
 
 logging.basicConfig(
@@ -124,7 +124,9 @@ async def _handle_direct_link(update: Update, context: ContextTypes.DEFAULT_TYPE
     """کاربر از طریق لینک ناشناسِ مستقیم اومده. برخلاف matching عادی
     اینجا هیچ ChatSession یا جفت‌شدنِ دائمی نمی‌سازیم، فقط می‌ذاریمش تو
     state «در حال نوشتن پیام ناشناس»؛ پیام بعدیش با
-    handlers.anon_note.send_anon_note ارسال می‌شه."""
+    handlers.anon_note.send_anon_note ارسال می‌شه. چکِ بلاک همینجا
+    (نه فقط لحظه‌ی send_anon_note) انجام می‌شه تا کاربرِ بلاک‌شده اصلاً
+    دعوت به نوشتنِ پیام نشه."""
     from handlers.profile import is_profile_complete, start_onboarding
 
     requester_id = update.effective_user.id
@@ -151,6 +153,13 @@ async def _handle_direct_link(update: Update, context: ContextTypes.DEFAULT_TYPE
         await update.message.reply_text(
             "⚠️ الان توی یه چت فعال هستی و نمی‌تونی پیام ناشناس بفرستی. اول چتت رو پایان بده."
         )
+        return
+
+    # چکِ بلاک باید همین‌جا (قبل از نمایشِ «پیامت رو بنویس») انجام بشه؛
+    # وگرنه کاربرِ بلاک‌شده الکی دعوت به نوشتنِ پیام می‌شه و فقط لحظه‌ی
+    # ارسالِ واقعی (handlers.anon_note.send_anon_note) متوجهِ بلاک‌بودنش می‌شه.
+    if await is_sender_blocked(target_id, requester_id):
+        await update.message.reply_text("🚫 صاحبِ این لینک بلاکت کرده و نمی‌تونی از طریقِ این لینک پیام ناشناس بفرستی.")
         return
 
     context.user_data["awaiting_note_target"] = target_id
