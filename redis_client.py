@@ -491,6 +491,17 @@ async def get_last_seen(user_id: int) -> Optional[float]:
     return float(val) if val else None
 
 
+async def get_last_seen_many(user_ids: list[int]) -> dict[int, float]:
+    """نسخه‌ی دسته‌ای برای وقتی باید last_seenِ چندین کاربر رو یکجا
+    بخونیم (مثلاً برای مرتب‌سازیِ لیستِ افرادِ نزدیک بر اساسِ زودترین
+    آنلاینی)؛ یه MGET به‌جای چندین GETِ جدا."""
+    if not user_ids:
+        return {}
+    keys = [KEY_LAST_SEEN.format(user_id=uid) for uid in user_ids]
+    values = await r.mget(keys)
+    return {uid: float(val) for uid, val in zip(user_ids, values) if val is not None}
+
+
 TTL_BAN_NOTICE = 60 * 60 * 6  # هر ۶ ساعت یه‌بار یادآوری، نه با هر پیام
 
 

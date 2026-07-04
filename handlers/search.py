@@ -14,7 +14,7 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 """هندلرهای «جستجوی کاربران»: matching هدفمند با فیلترِ جنسیت/سن/استان/
-شهر، برخلافِ matching کاملاً تصادفیِ chat.py.
+شهر/فاصله، برخلافِ matching کاملاً تصادفیِ chat.py.
 
 فیلترها توی context.user_data می‌مونن (per-session، برای این مقیاس
 کافیه). matching هنوز از صفِ Redis استفاده می‌کنه، فقط قبل از جفت‌کردن
@@ -24,8 +24,14 @@
 دکمه‌ی «فیلتر بر اساسِ شهر» تا وقتی استان انتخاب نشده باشه فعال نمی‌شه؛
 انتخابِ استانِ جدید هم خودکار فیلترِ شهرِ استانِ قبلی رو پاک می‌کنه.
 انتخابِ استان بدونِ شهر مشکلی نداره — جستجو فقط بر اساسِ استان انجام
-می‌شه."""
+می‌شه.
 
+فیلترِ فاصله (همون گزینه‌های شعاعیِ handlers/nearby.py: ۵/۱۰/۲۰/۵۰
+کیلومتر یا «نزدیک‌ترین آدمِ ممکن») به موقعیتِ مکانیِ ثبت‌شده نیاز داره؛
+بدونِ اون، دکمه‌ی فیلترِ فاصله صراحتاً می‌گه اول باید از «افراد نزدیک»
+موقعیت رو به اشتراک بذاری."""
+
+from geoalchemy2.functions import ST_DWithin, ST_Distance
 from sqlalchemy import select
 from telegram import Update
 from telegram.ext import ContextTypes
@@ -33,9 +39,15 @@ from telegram.ext import ContextTypes
 import redis_client as rc
 from db import Gender, User, async_session, deduct_coins, get_or_create_user
 from handlers.chat import check_room_conflict, try_match
-from keyboards import search_city_keyboard, search_province_keyboard, search_users_keyboard
+from keyboards import search_city_keyboard, search_distance_keyboard, search_province_keyboard, search_users_keyboard
 
-FILTERS_KEY = "search_filters"  # {"gender": "male"|"female"|None, "min_age":.., "max_age":.., "province":.., "city":..}
+FILTERS_KEY = "search_filters"  # {"gender", "min_age", "max_age", "province", "city", "distance": km|"closest"}
+
+_FA_DIGITS = str.maketrans("0123456789", "۰۱۲۳۴۵۶۷۸۹")
+
+
+def _to_fa(n: int) -> str:
+    return str(n).translate(_FA_DIGITS)
 
 
 async def show_search_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -44,13 +56,21 @@ async def show_search_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     age_range = filters_.get("age_range", "بدون فیلتر")
     province_label = filters_.get("province") or "بدون فیلتر"
     city_label = filters_.get("city") or "بدون فیلتر"
+    distance_val = filters_.get("distance")
+    if distance_val == "closest":
+        distance_label = "نزدیک‌ترین آدم ممکن"
+    elif distance_val:
+        distance_label = f"{_to_fa(distance_val)} کیلومتری"
+    else:
+        distance_label = "بدون فیلتر"
 
     text = (
         "🔮 جستجوی هدفمند کاربران\n\n"
         f"فیلتر جنسیت: {gender_label}\n"
         f"فیلتر سن: {age_range}\n"
         f"فیلتر استان: {province_label}\n"
-        f"فیلتر شهر: {city_label}\n\n"
+        f"فیلتر شهر: {city_label}\n"
+        f"فیلتر فاصله: {distance_label}\n\n"
         "می‌تونی فیلترها رو تنظیم کنی و بعد جستجو رو شروع کنی."
     )
     if update.callback_query:
@@ -101,6 +121,19 @@ async def search_callback_router(update: Update, context: ContextTypes.DEFAULT_T
             return
         await query.edit_message_text("شهر مدنظرت رو انتخاب کن:", reply_markup=search_city_keyboard(province))
 
+    elif action == "filter_distance":
+        # این فیلتر به همون موقعیتِ مکانی‌ای نیاز داره که «افراد نزدیک» ثبت می‌کنه
+        async with async_session() as session:
+            me = await get_or_create_user(session, query.from_user.id)
+            has_location = me.location is not None
+        if not has_location:
+            await query.edit_message_text(
+                "⚠️ این فیلتر به موقعیتِ مکانی نیاز داره. اول از بخشِ «📍 افراد نزدیک» موقعیتت رو به اشتراک بذار.",
+                reply_markup=search_users_keyboard(),
+            )
+            return
+        await query.edit_message_text("محدوده‌ی فاصله رو انتخاب کن:", reply_markup=search_distance_keyboard())
+
     elif action == "go":
         await run_search(update, context)
 
@@ -143,6 +176,22 @@ async def search_city_callback_router(update: Update, context: ContextTypes.DEFA
         filters_.pop("city", None)
     else:
         filters_["city"] = value
+
+    await show_search_menu(update, context)
+
+
+async def search_distance_callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    await query.answer()
+    value = query.data.split(":", 1)[1]
+
+    filters_ = context.user_data.setdefault(FILTERS_KEY, {})
+    if value == "none":
+        filters_.pop("distance", None)
+    elif value == "closest":
+        filters_["distance"] = "closest"
+    else:
+        filters_["distance"] = int(value)
 
     await show_search_menu(update, context)
 
@@ -226,9 +275,27 @@ async def run_search(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         candidate_ids.extend(int(m) for m in members if int(m) != user_id)
 
     matched_id = None
-    if candidate_ids and (filters_.get("gender") or filters_.get("min_age") or filters_.get("province")):
+    if candidate_ids and (
+        filters_.get("gender") or filters_.get("min_age") or filters_.get("province") or filters_.get("distance")
+    ):
         async with async_session() as session:
-            stmt = select(User).where(User.id.in_(candidate_ids))
+            # فیلترِ فاصله یه سشنِ تازه برای خواندنِ موقعیتِ خودِ کاربر
+            # لازم داره (نه همونی که بالاتر برای چکِ profile_complete
+            # باز و بسته شد) تا از مشکلِ detached instance جلوگیری بشه.
+            distance_filter = filters_.get("distance")
+            me_location = None
+            if distance_filter:
+                me_row = await session.get(User, user_id)
+                if me_row is not None:
+                    me_location = me_row.location
+            has_distance_filter = distance_filter is not None and me_location is not None
+
+            if has_distance_filter:
+                distance_col = ST_Distance(User.location, me_location).label("distance_m")
+                stmt = select(User, distance_col).where(User.id.in_(candidate_ids))
+            else:
+                stmt = select(User).where(User.id.in_(candidate_ids))
+
             if filters_.get("gender"):
                 stmt = stmt.where(User.gender == Gender(filters_["gender"]))
             if filters_.get("min_age") and filters_.get("max_age"):
@@ -237,8 +304,15 @@ async def run_search(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
                 stmt = stmt.where(User.province == filters_["province"])
             if filters_.get("city"):
                 stmt = stmt.where(User.city == filters_["city"])
+
+            if has_distance_filter:
+                stmt = stmt.where(User.location.isnot(None))
+                if distance_filter != "closest":
+                    stmt = stmt.where(ST_DWithin(User.location, me_location, distance_filter * 1000))
+                stmt = stmt.order_by(distance_col.asc())
+
             result = await session.execute(stmt)
-            matches = result.scalars().all()
+            matches = [row[0] for row in result.all()] if has_distance_filter else result.scalars().all()
             if matches:
                 matched_id = matches[0].id
 

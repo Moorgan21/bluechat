@@ -443,6 +443,8 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         await search.search_city_callback_router(update, context)
     elif data.startswith("searchprov:"):
         await search.search_province_callback_router(update, context)
+    elif data.startswith("searchdist:"):
+        await search.search_distance_callback_router(update, context)
     elif data.startswith("nearby:"):
         await nearby_callback_router(update, context, data)
     elif data.startswith("coins:history"):
@@ -521,8 +523,15 @@ async def nearby_callback_router(update: Update, context: ContextTypes.DEFAULT_T
         await nearby.show_nearby_users(update, context)
     elif action.startswith("radius:"):
         radius_str = action.split(":", 1)[1]
-        radius_km = None if radius_str == "closest" else int(radius_str)
-        await nearby.show_nearby_users(update, context, radius_km=radius_km)
+        if radius_str == "closest":
+            # ویژگیِ حذف‌شده (نزدیک‌ترین آدمِ ممکن)؛ دکمه‌ی قدیمیِ باقی‌مونده
+            # رو با برگشت به منوی افرادِ نزدیک (برای انتخابِ شعاعِ معتبر) هندل کن
+            await nearby.show_nearby_menu(update, context)
+            return
+        await nearby.show_nearby_users(update, context, radius_km=int(radius_str))
+    elif action.startswith("page:"):
+        _, radius_str, page_str = action.split(":", 2)
+        await nearby.show_nearby_users(update, context, radius_km=int(radius_str), page=int(page_str))
     elif action == "update_location":
         await nearby.request_location_share(update, context)
     elif action == "delete_location":

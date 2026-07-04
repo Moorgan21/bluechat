@@ -301,8 +301,32 @@ def search_users_keyboard() -> InlineKeyboardMarkup:
             [InlineKeyboardButton("🎂 فیلتر بر اساس سن", callback_data="search:filter_age")],
             [InlineKeyboardButton("🗺 فیلتر بر اساس استان", callback_data="search:filter_province")],
             [InlineKeyboardButton("🏙 فیلتر بر اساس شهر", callback_data="search:filter_city")],
+            [InlineKeyboardButton("📍 فیلتر بر اساس فاصله", callback_data="search:filter_distance")],
             [InlineKeyboardButton("🔍 شروع جستجو", callback_data="search:go")],
             [InlineKeyboardButton("🔙 بازگشت به منو", callback_data="menu:main")],
+        ]
+    )
+
+
+def search_distance_keyboard() -> InlineKeyboardMarkup:
+    """فیلترِ فاصله برای جستجوی هدفمند؛ همون گزینه‌های شعاعیِ «افراد
+    نزدیک» (۵/۱۰/۲۰/۵۰ کیلومتر) به‌علاوه‌ی «نزدیک‌ترین آدم ممکن» که
+    بدونِ محدودیتِ شعاع، فقط نزدیک‌ترین کاندیدای موجود رو matching
+    می‌کنه. این فیلتر به موقعیتِ مکانیِ ثبت‌شده (همون که «افراد نزدیک»
+    استفاده می‌کنه) نیاز داره."""
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton("📏 ۵ کیلومتری", callback_data="searchdist:5"),
+                InlineKeyboardButton("📏 ۱۰ کیلومتری", callback_data="searchdist:10"),
+            ],
+            [
+                InlineKeyboardButton("📏 ۲۰ کیلومتری", callback_data="searchdist:20"),
+                InlineKeyboardButton("📏 ۵۰ کیلومتری", callback_data="searchdist:50"),
+            ],
+            [InlineKeyboardButton("🎯 نزدیک‌ترین آدم ممکن", callback_data="searchdist:closest")],
+            [InlineKeyboardButton("❌ حذف فیلتر", callback_data="searchdist:none")],
+            [InlineKeyboardButton("🔙 بازگشت", callback_data="menu:search")],
         ]
     )
 
@@ -353,12 +377,22 @@ def search_city_keyboard(province: str, page: int = 0) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(rows)
 
 
-def nearby_keyboard(has_location: bool) -> InlineKeyboardMarkup:
-    """دکمه‌ی تکیِ «نمایش افراد نزدیک» جاش رو به چندتا دکمه‌ی فیلترِ شعاع
-    داده تا کاربر مستقیم انتخاب کنه توی چه محدوده‌ای بگرده، به‌جای
-    اینکه همیشه توی شعاعِ ثابتِ ۵۰ کیلومتر جستجو بشه."""
+def nearby_keyboard(
+    has_location: bool, radius_km: int | None = None, page: int = 0, has_next: bool = False
+) -> InlineKeyboardMarkup:
+    """دکمه‌های فیلترِ شعاع (۵/۱۰/۲۰/۵۰ کیلومتر) تا کاربر مستقیم انتخاب
+    کنه توی چه محدوده‌ای بگرده. radius_km/page/has_next فقط وقتی پر
+    می‌شن که این کیبورد زیرِ یه صفحه‌ی نتایج باشه، تا دکمه‌های ناوبریِ
+    صفحه‌بندی (قبلی/بعدی) هم بالای بقیه اضافه بشن."""
     rows = []
     if has_location:
+        if radius_km is not None and (page > 0 or has_next):
+            nav = []
+            if page > 0:
+                nav.append(InlineKeyboardButton("→ قبلی", callback_data=f"nearby:page:{radius_km}:{page - 1}"))
+            if has_next:
+                nav.append(InlineKeyboardButton("بعدی ←", callback_data=f"nearby:page:{radius_km}:{page + 1}"))
+            rows.append(nav)
         rows.append([InlineKeyboardButton("🔄 به‌روزرسانی موقعیت", callback_data="nearby:update_location")])
         rows.append(
             [
@@ -372,7 +406,6 @@ def nearby_keyboard(has_location: bool) -> InlineKeyboardMarkup:
                 InlineKeyboardButton("📏 ۵۰ کیلومتری", callback_data="nearby:radius:50"),
             ]
         )
-        rows.append([InlineKeyboardButton("🎯 نزدیک‌ترین آدم ممکن", callback_data="nearby:radius:closest")])
         rows.append([InlineKeyboardButton("🗑 حذف موقعیت من", callback_data="nearby:delete_location")])
     else:
         rows.append([InlineKeyboardButton("📍 اشتراک‌گذاری موقعیت", callback_data="nearby:share_location")])

@@ -1,12 +1,17 @@
-"""تست‌های واحد برای فیلترهای شعاعیِ «افراد نزدیک» (۵/۱۰/۲۰/۵۰ کیلومتر
-و «نزدیک‌ترین آدم ممکن»). فاصله‌ها با جابه‌جاییِ خالصِ عرضِ جغرافیایی
-(بدونِ تغییرِ طول) ساخته می‌شن، چون در این حالت فاصله‌ی هر درجه تقریباً
-همیشه ۱۱۱.۳۲ کیلومتره، صرف‌نظر از عرضِ جغرافیاییِ پایه."""
+"""تست‌های واحد برای فیلترهای شعاعیِ «افراد نزدیک» (۵/۱۰/۲۰/۵۰ کیلومتر)،
+نمایشِ آیدیِ پروفایلِ عمومی و زمانِ آنلاینی، مرتب‌سازی بر اساسِ
+زودترین آنلاینی، سقفِ ۵۰ نفر در هر شعاع، و صفحه‌بندیِ ۲۰تایی.
 
+فاصله‌ها با جابه‌جاییِ خالصِ عرضِ جغرافیایی (بدونِ تغییرِ طول) ساخته
+می‌شن، چون در این حالت فاصله‌ی هر درجه تقریباً همیشه ۱۱۱.۳۲ کیلومتره،
+صرف‌نظر از عرضِ جغرافیاییِ پایه."""
+
+import time
 from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import db
+import redis_client as rc
 from db import async_session, make_point
 from handlers import nearby
 
@@ -83,39 +88,71 @@ async def test_radius_filter_no_one_in_range_shows_explicit_message(make_user):
     assert "۵ کیلومتری‌ت پیدا نشد" in text
 
 
-async def test_closest_possible_ignores_radius_and_returns_single_nearest(make_user):
+async def test_result_shows_profile_id_and_online_time(make_user):
     me = await make_user()
     await _set_location(me.id, 0, "من")
 
-    close = await make_user()
-    await _set_location(close.id, 8, "نزدیک‌تر")
-    far = await make_user()
-    await _set_location(far.id, 900, "خیلی دورترِ")
+    candidate = await make_user()
+    await _set_location(candidate.id, 3, "کاندیدا")
+    await rc.update_last_seen(candidate.id)
 
     update = _make_update(me.id)
-    await nearby.show_nearby_users(update, MagicMock(), radius_km=None)
+    await nearby.show_nearby_users(update, MagicMock(), radius_km=10)
 
     text = update.callback_query.edit_message_text.await_args.args[0]
-    assert "نزدیک‌تر" in text
-    assert "خیلی دورترِ" not in text
-    assert "نزدیک‌ترین کاربرِ ممکن" in text
+    assert f"/user_{candidate.referral_code}" in text
+    assert "🟢 آنلاین" in text
 
 
-async def test_closest_possible_finds_someone_even_far_beyond_50km(make_user):
+async def test_results_sorted_by_most_recently_online_first(make_user):
     me = await make_user()
     await _set_location(me.id, 0, "من")
 
-    only_candidate = await make_user()
-    await _set_location(only_candidate.id, 900, "دوردست")
+    # candB فیزیکاً نزدیک‌تره ولی candA اخیراً آنلاین بوده، پس candA باید اول بیاد
+    cand_a = await make_user()
+    await _set_location(cand_a.id, 8, "کاندالف")
+    cand_b = await make_user()
+    await _set_location(cand_b.id, 2, "کاندبی")
+
+    await rc.update_last_seen(cand_a.id)
+    await rc.r.set(rc.KEY_LAST_SEEN.format(user_id=cand_b.id), time.time() - 10_000)
 
     update = _make_update(me.id)
-    await nearby.show_nearby_users(update, MagicMock(), radius_km=None)
+    await nearby.show_nearby_users(update, MagicMock(), radius_km=10)
 
     text = update.callback_query.edit_message_text.await_args.args[0]
-    assert "دوردست" in text
+    assert text.index("کاندالف") < text.index("کاندبی")
 
 
-async def test_nearby_callback_router_parses_radius_and_closest(make_user):
+async def test_results_capped_at_50_and_paginated_20_per_page(make_user):
+    me = await make_user()
+    await _set_location(me.id, 0, "من")
+
+    for i in range(55):
+        candidate = await make_user()
+        await _set_location(candidate.id, 1 + i * 0.05, f"کاربر{i}")
+        await rc.update_last_seen(candidate.id)
+
+    update = _make_update(me.id)
+    await nearby.show_nearby_users(update, MagicMock(), radius_km=50, page=0)
+
+    text = update.callback_query.edit_message_text.await_args.args[0]
+    assert "۵۰ نفر" in text  # سقفِ نمایش‌داده‌شده، نه ۵۵ی واقعی
+    keyboard = update.callback_query.edit_message_text.await_args.kwargs["reply_markup"]
+    nav_texts = [b.text for row in keyboard.inline_keyboard for b in row]
+    assert "بعدی ←" in nav_texts
+    assert "→ قبلی" not in nav_texts  # صفحه‌ی اول، دکمه‌ی قبلی نداره
+
+    # صفحه‌ی دوم (آخرین ۱۰ نفر از ۵۰تا)
+    update_p2 = _make_update(me.id)
+    await nearby.show_nearby_users(update_p2, MagicMock(), radius_km=50, page=2)
+    keyboard_p2 = update_p2.callback_query.edit_message_text.await_args.kwargs["reply_markup"]
+    nav_texts_p2 = [b.text for row in keyboard_p2.inline_keyboard for b in row]
+    assert "→ قبلی" in nav_texts_p2
+    assert "بعدی ←" not in nav_texts_p2  # صفحه‌ی آخر (۵۰ = ۳ صفحه‌ی ۲۰تایی)
+
+
+async def test_nearby_callback_router_parses_radius(make_user):
     import main
 
     me = await make_user()
@@ -130,7 +167,35 @@ async def test_nearby_callback_router_parses_radius_and_closest(make_user):
     text = update.callback_query.edit_message_text.await_args.args[0]
     assert "کاندیدا" in text
 
-    update2 = _make_update(me.id)
-    await main.nearby_callback_router(update2, context, "nearby:radius:closest")
-    text2 = update2.callback_query.edit_message_text.await_args.args[0]
-    assert "نزدیک‌ترین کاربرِ ممکن" in text2
+
+async def test_nearby_callback_router_page_action(make_user):
+    import main
+
+    me = await make_user()
+    await _set_location(me.id, 0, "من")
+    for i in range(25):
+        candidate = await make_user()
+        await _set_location(candidate.id, 1 + i * 0.1, f"کاربر{i}")
+
+    update = _make_update(me.id)
+    context = MagicMock()
+
+    await main.nearby_callback_router(update, context, "nearby:page:50:1")
+    keyboard = update.callback_query.edit_message_text.await_args.kwargs["reply_markup"]
+    nav_texts = [b.text for row in keyboard.inline_keyboard for b in row]
+    assert "→ قبلی" in nav_texts
+
+
+async def test_old_closest_button_falls_back_to_menu(make_user):
+    """دکمه‌ی حذف‌شده‌ی «نزدیک‌ترین آدم ممکن» اگه از یه پیامِ قدیمیِ
+    باقی‌مونده کلیک بشه، نباید کرش کنه؛ باید برگرده به منوی افرادِ نزدیک."""
+    import main
+
+    me = await make_user()
+    update = _make_update(me.id)
+    context = MagicMock()
+
+    await main.nearby_callback_router(update, context, "nearby:radius:closest")
+
+    text = update.callback_query.edit_message_text.await_args.args[0]
+    assert "افراد نزدیک" in text
