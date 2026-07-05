@@ -654,15 +654,22 @@ def main() -> None:
 
     app = Application.builder().token(BOT_TOKEN).post_init(post_init).build()
 
+    # گروهِ -2 قبل از -1 اجرا می‌شه. توی هر گروه، فقط اولین هندلری که
+    # فیلترش match کنه اجرا می‌شه و بقیه‌ی هندلرهای همون گروه چک نمی‌شن؛
+    # برای همین گیتِ اسپمِ کامندها (که فقط filters.COMMAND رو می‌گیره)
+    # باید تو یه گروهِ جداگانه از گیتِ بن (که با filters.ALL همه‌چیز رو
+    # می‌قاپه) باشه، وگرنه filters.ALL همیشه اول match می‌کنه و
+    # reject_spam_blocked_commands هیچ‌وقت اجرا نمی‌شه.
+    app.add_handler(
+        MessageHandler(filters.UpdateType.MESSAGE & filters.COMMAND, reject_spam_blocked_commands), group=-2
+    )
+
     # گروهِ -1: قبل از هر چیزِ دیگه‌ای اجرا می‌شه (کامندها/پیام‌ها/
     # callback query‌ها، همه با یه MessageHandler(filters.ALL) و یه
     # CallbackQueryHandler پوشش داده می‌شن، نه با شرکت‌دادنِ تک‌تکِ
     # هندلرهای گروهِ ۰).
     app.add_handler(MessageHandler(filters.ALL, reject_banned_users), group=-1)
     app.add_handler(CallbackQueryHandler(reject_banned_users), group=-1)
-    app.add_handler(
-        MessageHandler(filters.UpdateType.MESSAGE & filters.COMMAND, reject_spam_blocked_commands), group=-1
-    )
 
     app.add_handler(CommandHandler("start", start_command))
     app.add_handler(CommandHandler("stop", chat.stop_chat))
