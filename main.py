@@ -237,6 +237,29 @@ async def reject_banned_users(update: Update, context: ContextTypes.DEFAULT_TYPE
     raise ApplicationHandlerStop
 
 
+async def reject_spam_blocked_commands(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """گیتِ سراسریِ اسپم برای کامندها: توی گروهِ -1 رجیستر می‌شه تا قبل
+    از تک‌تکِ CommandHandlerها اجرا بشه. بدونِ این، چون text_router (که
+    توش check_message صدا زده می‌شه) صریحاً کامندها رو با
+    ~filters.COMMAND کنار می‌ذاره و CommandHandlerها هم خودشون هیچ چکِ
+    اسپمی ندارن، یه کاربرِ بلاک‌شده می‌تونست همچنان /start و بقیه‌ی
+    کامندها رو صدا بزنه در حالی که پیامِ معمولیش drop می‌شد."""
+    user = update.effective_user
+    if user is None:
+        return
+    _spam = await spam_guard.check_command(user.id)
+    if _spam == spam_guard.SpamResult.ALREADY_BLOCKED:
+        raise ApplicationHandlerStop
+    if _spam == spam_guard.SpamResult.JUST_BLOCKED:
+        secs = await spam_guard.remaining_block(user.id)
+        if update.effective_message is not None:
+            try:
+                await update.effective_message.reply_text(f"⚠️ خیلی سریع دستور می‌فرستی! {secs} ثانیه صبر کن.")
+            except TelegramError:
+                pass
+        raise ApplicationHandlerStop
+
+
 async def text_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     text = update.message.text or ""
     user_id = update.effective_user.id
@@ -637,6 +660,9 @@ def main() -> None:
     # هندلرهای گروهِ ۰).
     app.add_handler(MessageHandler(filters.ALL, reject_banned_users), group=-1)
     app.add_handler(CallbackQueryHandler(reject_banned_users), group=-1)
+    app.add_handler(
+        MessageHandler(filters.UpdateType.MESSAGE & filters.COMMAND, reject_spam_blocked_commands), group=-1
+    )
 
     app.add_handler(CommandHandler("start", start_command))
     app.add_handler(CommandHandler("stop", chat.stop_chat))
